@@ -1,6 +1,6 @@
-use std::error::Error;
+use std::{error::Error};
 
-use tsengscript_interpreter::execute;
+use tsengscript_interpreter::{execute, ExecutionResult};
 
 use crate::tsengscript_interpreter::Token;
 
@@ -18,13 +18,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn tsengscript_test() -> Result<(), Box<dyn Error>> {
-    let script = String::from("7 5 2 OP_ADD 2 OP_SUB OP_SUB 2 FALSE FALSE OP_EQUAL");
-    let res = execute(&script)?;
+    let script = String::from("5 2 OP_ADD 7 OP_SUB 0 OP_EQUAL TRUE OP_EQUALVERIFY");
+    let ExecutionResult{top, stack: _stack } = execute(&script)?;
 
-    match res {
+    match top {
         None => println!("Result is None"),
         Some(Token::Bool(val)) => println!("Result is bool: {}", val),
-        Some(Token::ULiteralByteSeq(bigint)) => println!("Result is bigint: {:x?}", bigint),
+        Some(Token::UByteSeq(bigint)) => println!("Result is bigint: {:x?}", bigint),
         Some(Token::Operator(_)) => println!("Result is an operator!")
     };
 
