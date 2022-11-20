@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-pub const WITH_MINER_FLAG: &str = "--with-miner";
-pub const WALLET_PATH_VAR: &str = "wallet-path";
-
 pub struct Command<T> {
     pub processor: CommandProcessor<T>,
     pub expected_fields: Vec<Field>

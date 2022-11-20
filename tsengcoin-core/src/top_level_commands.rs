@@ -1,6 +1,8 @@
 use std::{collections::HashMap, error::Error};
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address}};
+use ring::signature::KeyPair;
+
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair}};
 
 fn run_script(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let script = invocation.get_field("script").unwrap();
@@ -50,6 +52,37 @@ fn b58c_decode(_command_name: &String, invocation: &CommandInvocation, _state: O
     Ok(())
 }
 
+fn create_address(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+    let path = invocation.get_field("keypair-path").unwrap();
+    let password = invocation.get_field("password").unwrap();
+    let keypair = create_keypair(&password, &path)?;
+
+    let pubkey = keypair.public_key().as_ref();
+    let address = address_from_public_key(&pubkey.to_vec());
+    let encoded = address_to_b58c(&address.to_vec());
+
+    println!("Created new keypair and saved it to {path}. Protect this file!");
+    println!("Your new address is {}", encoded);
+
+    Ok(())
+}
+
+fn test_load_keypair(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+    let path = invocation.get_field("keypair-path").unwrap();
+    let password = invocation.get_field("password").unwrap();
+    let keypair = load_keypair(&password, &path)?;
+
+    println!("Successfully loaded keypair");
+
+    let pubkey = keypair.public_key().as_ref();
+    let address = address_from_public_key(&pubkey.to_vec());
+    let encoded = address_to_b58c(&address.to_vec());
+
+    println!("Your address is {}", encoded);
+
+    Ok(())
+}
+
 pub fn make_command_map() -> CommandMap<()> {
     let mut out: CommandMap<()> = HashMap::new();
     let run_script_cmd: Command<()> = Command {
@@ -58,7 +91,7 @@ pub fn make_command_map() -> CommandMap<()> {
             Field::new("script", FieldType::Spaces(0))
         ]
     };
-    let random_test_address_cmd: Command<()> = Command {
+    let random_test_address_hex_cmd: Command<()> = Command {
         processor: random_test_address,
         expected_fields: vec![]
     };
@@ -74,11 +107,27 @@ pub fn make_command_map() -> CommandMap<()> {
             Field::new("encoded", FieldType::Pos(0))
         ]
     };
+    let create_address_cmd: Command<()> = Command {
+        processor: create_address,
+        expected_fields: vec![
+            Field::new("keypair-path", FieldType::Pos(0)),
+            Field::new("password", FieldType::Spaces(1))
+        ]
+    };
+    let test_load_keypair_cmd: Command<()> = Command {
+        processor: test_load_keypair,
+        expected_fields: vec![
+            Field::new("keypair-path", FieldType::Pos(0)),
+            Field::new("password", FieldType::Spaces(1))
+        ]
+    };
 
     out.insert(String::from("run-script"), run_script_cmd);
-    out.insert(String::from("random-test-address"), random_test_address_cmd);
+    out.insert(String::from("random-test-address-hex"), random_test_address_hex_cmd);
     out.insert(String::from("b58c-encode"), b58c_encode_cmd);
     out.insert(String::from("b58c-decode"), b58c_decode_cmd);
+    out.insert(String::from("create-address"), create_address_cmd);
+    out.insert(String::from("test-load-keypair"), test_load_keypair_cmd);
 
     out
 }
