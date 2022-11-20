@@ -110,16 +110,30 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>) -> R
     }
 
     let mut fields: HashMap<String, String> = HashMap::new();
+    let mut pos_fields: Vec<Field> = vec![];
 
+    // Process explicitly assigned fields first and recalculate positions for
+    // positional fields
     for Field {name, field_type} in expected_fields {
+        // Will only be Some if the field was assigned with `--name=value` syntax
         let var_field = assignments.get(name).cloned();
 
         match (field_type, var_field) {
-            (_, Some(field)) => drop(fields.insert(name.to_owned(), field)),
-            (FieldType::Pos(num), None) if num.to_owned() < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[num.to_owned()].clone())),
-            (FieldType::Spaces(pos), None) if pos.to_owned() < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()..].join(" "))),
-            (FieldType::Pos(_) | FieldType::Spaces(_), None) => return Err(format!("Not enough arguments: missing expected argument {name}"))?,
-            (FieldType::Var, None) => return Err(format!("Missing expected argument {name}. Pass this in with --{name}=<value>"))?
+            (FieldType::Var, Some(var)) => drop(fields.insert(name.to_owned(), var)),
+            (FieldType::Var, None) => return Err(format!("Missing expected argument {name}. Pass this in with --{name}=<value>"))?,
+            (FieldType::Pos(_) | FieldType::Spaces(_), Some(var)) => drop(fields.insert(name.to_owned(), var)),
+            (FieldType::Pos(_), None) => pos_fields.push(Field::new(name, FieldType::Pos(pos_fields.len()))),
+            (FieldType::Spaces(_), None) => pos_fields.push(Field::new(name, FieldType::Spaces(pos_fields.len())))
+        }
+    }
+
+    // Now go through the remaining ordered arguments with new positions and pick them out
+    for Field {name, field_type} in pos_fields {
+        match field_type {
+            FieldType::Var => unreachable!(),
+            FieldType::Pos(pos) if pos.to_owned() < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()].clone())),
+            FieldType::Spaces(pos) if pos.to_owned() < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()..].join(" "))),
+            _ => return Err(format!("Not enough arguments: missing expected argument {name}"))?,
         };
     }
 
