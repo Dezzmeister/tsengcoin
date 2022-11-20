@@ -32,6 +32,7 @@ Here is an example TsengScript program:
 ```
 
 <hr>
+
 _You can run this program directly from the command line with_
 
 ```
