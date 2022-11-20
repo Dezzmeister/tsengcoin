@@ -30,7 +30,7 @@ pub struct CommandInvocation {
 }
 
 impl CommandInvocation {
-    pub fn is_flag_set(&self, flag: &str) -> bool {
+    pub fn get_flag(&self, flag: &str) -> bool {
         self.flags.contains(&flag.to_owned())
     }
 
@@ -101,20 +101,18 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>) -> R
     let (assignment_strs, flags): (Vec<String>, Vec<String>) = 
         specials
             .iter()
-            .map(|s| s.to_owned())
+            .map(|s| s.trim_start_matches("--").to_owned())
             .partition(|s| s.contains('='));
 
     for assignment in assignment_strs {
         let pair: Vec<&str> = assignment.split("=").collect();
-        let key = pair[0].trim_start_matches("--").to_owned();
+        let key = pair[0].to_owned();
         let value = pair[1].to_owned();
 
         assignments.insert(key, value);
     }
 
     let mut fields: HashMap<String, String> = HashMap::new();
-
-    println!("{:?}", ordered_args);
 
     for Field {name, field_type} in expected_fields {
         let var_field = assignments.get(name).cloned();

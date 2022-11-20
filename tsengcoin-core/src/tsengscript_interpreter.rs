@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::{collections::HashMap};
 use num_bigint::BigUint;
 
@@ -11,11 +12,12 @@ use crate::error::ErrorKind::IntegerOverflow;
 use crate::error::ErrorKind::EqualVerifyFailed;
 use crate::wallet::address_from_public_key;
 
-/// Scripts can be 1kb max
+/// Scripts can be 1kb max to mitigate malicious transactions
 const MAX_SCRIPT_LEN: usize = 1024;
 
 /// Stack can have up to 2048 tokens
 /// This will allow TsengScript to support small, non-recursize procedures
+/// in the future
 const MAX_STACK_SIZE: usize = 2048;
 
 type OperatorFn = fn(stack: &mut Vec<Token>) -> Result<()>;
@@ -25,6 +27,16 @@ pub enum Token {
     UByteSeq(BigUint),
     Bool(bool),
     Operator(OperatorFn)
+}
+
+impl Debug for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UByteSeq(arg0) => f.debug_tuple("UByteSeq").field(arg0).finish(),
+            Self::Bool(arg0) => f.debug_tuple("Bool").field(arg0).finish(),
+            Self::Operator(_) => write!(f, "Operator")
+        }
+    }
 }
 
 pub struct ExecutionResult {
@@ -38,7 +50,7 @@ fn make_operator_name_map() -> HashMap<String, OperatorFn> {
     out.insert(String::from("OP_ADD"), op_add);
     out.insert(String::from("OP_SUB"), op_sub);
     out.insert(String::from("OP_EQUAL"), op_equal);
-    out.insert(String::from("OP_EQUALVERIFY"), op_equalverify);
+    out.insert(String::from("OP_REQUIRE_EQUAL"), op_require_equal);
     out.insert(String::from("OP_DUP"), op_dup);
     out.insert(String::from("HASH160"), hash160);
 
@@ -115,7 +127,7 @@ pub fn execute(script: &String) -> Result<ExecutionResult> {
     }
 
     // Return the last item on the stack - this is the result of the script
-    Ok(ExecutionResult { top: stack.pop(), stack })
+    Ok(ExecutionResult { top: stack.last().cloned(), stack })
 }
 
 fn op_add(stack: &mut Vec<Token>) -> Result<()> {
@@ -181,7 +193,7 @@ fn op_equal(stack: &mut Vec<Token>) -> Result<()> {
     Ok(())
 }
 
-fn op_equalverify(stack: &mut Vec<Token>) -> Result<()> {
+fn op_require_equal(stack: &mut Vec<Token>) -> Result<()> {
     if stack.len() < 2 {
         return Err(Box::new(ScriptStackUnderflow))
     }
