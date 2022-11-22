@@ -19,6 +19,7 @@ cust = "0.3.2"
 ripemd = "0.1.3"
 num-bigint = "0.4.3"
 base58check = "0.1.0"
+crossbeam = "0.8.2"
 
 [build-dependencies.cuda_builder]
 version = "0.3.0"

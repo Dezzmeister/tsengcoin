@@ -1,8 +1,8 @@
-use std::{collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error, net::{SocketAddr, IpAddr, Ipv4Addr}, sync::{Mutex, Arc}, thread};
 
 use ring::signature::KeyPair;
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair}};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self}, state::State, net::listen_for_connections}, session_commands::listen_for_commands};
 
 fn run_script(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let script = invocation.get_field("script").unwrap();
@@ -79,6 +79,78 @@ fn test_load_keypair(_command_name: &String, invocation: &CommandInvocation, _st
     let encoded = address_to_b58c(&address.to_vec());
 
     println!("Your address is {}", encoded);
+
+    Ok(())
+}
+
+fn connect(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+    let seed_ip = invocation.get_field("seed-ip").unwrap().parse::<IpAddr>().unwrap();
+    let seed_port = invocation.get_field("seed-port").unwrap().parse::<u16>().unwrap();
+    let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
+    let wallet_path = invocation.get_field("wallet-path").unwrap();
+    let wallet_password = invocation.get_field("wallet-password").unwrap();
+
+    let keypair = load_keypair(&wallet_password, &wallet_path)?;
+    let address: Address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
+    let b58c_address = address_to_b58c(&address.to_vec());
+
+    println!("Loaded wallet for address {}", b58c_address);
+
+    let seed_addr = SocketAddr::new(seed_ip, seed_port);
+    let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
+
+    println!("Connecting to node at {} and starting bootstrap process", seed_addr);
+
+    let state = State::new(addr_me);
+    let state_mut = Mutex::new(state);
+    let state_arc = Arc::new(state_mut);
+    let state_arc_2 = Arc::clone(&state_arc);
+
+    get_first_peers(seed_addr, &state_arc)?;
+    discover(seed_addr, &state_arc)?;
+
+    thread::spawn(move || {
+        println!("Starting network listener thread");
+        listen_for_connections(addr_me, &state_arc_2).expect("Network listener thread crashed");
+    });
+
+    advertise_self(&state_arc)?;
+
+    println!("Bootstrapping complete\nStarting worker threads");
+
+    println!("Type a command, or 'help' for a list of commands");
+    listen_for_commands(&state_arc);
+
+    Ok(())
+}
+
+fn start_seed(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+    let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
+    let wallet_path = invocation.get_field("wallet-path").unwrap();
+    let wallet_password = invocation.get_field("wallet-password").unwrap();
+
+    let keypair = load_keypair(&wallet_password, &wallet_path)?;
+    let address: Address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
+    let b58c_address = address_to_b58c(&address.to_vec());
+
+    println!("Loaded wallet for address {}", b58c_address);
+
+    let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
+
+    let state = State::new(addr_me);
+    let state_mut = Mutex::new(state);
+    let state_arc = Arc::new(state_mut);
+    let state_arc_2 = Arc::clone(&state_arc);
+
+    println!("Skipping bootstrapping, because `start-seed` was used instead of `connect`. Run `connect` if you wish to connect to an existing TsengCoin network");
+
+    thread::spawn(move || {
+        println!("Starting network listener thread");
+        listen_for_connections(addr_me, &state_arc_2).expect("Network listener thread crashed");
+    });
+
+    println!("Type a command, or 'help' for a list of commands");
+    listen_for_commands(&state_arc);
 
     Ok(())
 }
@@ -165,6 +237,60 @@ pub fn make_command_map() -> CommandMap<()> {
         flags: vec![],
         desc: String::from("Load a keypair file locked with a password and get the address out of it. The file is encrypted so this only works if you have the right password")
     };
+    let connect_cmd: Command<()> = Command {
+        processor: connect,
+        expected_fields: vec![
+            Field::new(
+                "seed-ip",
+                FieldType::Pos(0),
+                "IP address of a node in the network to connect to"
+            ),
+            Field::new(
+                "seed-port",
+                FieldType::Pos(1),
+                "Port of a node in the network to connect to, corresponding to the seed IP"
+            ),
+            Field::new(
+                "listen-port",
+                FieldType::Pos(2),
+                "Port to listen for incoming connections on"
+            ),
+            Field::new(
+                "wallet-path",
+                FieldType::Pos(3),
+                "Path to your wallet file"
+            ),
+            Field::new(
+                "wallet-password",
+                FieldType::Spaces(4),
+                "Password to your wallet"
+            )
+        ],
+        flags: vec![],
+        desc: String::from("Connect to the TsengCoin network as a full node. Unless you're trying to do fancy stuff, this is probably the command you want. If you don't have a wallet yet, run `create-address` first.")
+    };
+    let start_seed_cmd: Command<()> = Command {
+        processor: start_seed,
+        expected_fields: vec![
+            Field::new(
+                "listen-port",
+                FieldType::Pos(0),
+                "Port to listen for incoming connections on"
+            ),
+            Field::new(
+                "wallet-path",
+                FieldType::Pos(1),
+                "Path to your wallet file"
+            ),
+            Field::new(
+                "wallet-password",
+                FieldType::Spaces(2),
+                "Password to your wallet file"
+            )
+        ],
+        flags: vec![],
+        desc: String::from("Start as a full node without bootstrapping. The node will not attempt to connect to any network, and it will use whatever blockchain data it has locally.")
+    };
 
     out.insert(String::from("run-script"), run_script_cmd);
     out.insert(String::from("random-test-address-hex"), random_test_address_hex_cmd);
@@ -172,6 +298,8 @@ pub fn make_command_map() -> CommandMap<()> {
     out.insert(String::from("b58c-decode"), b58c_decode_cmd);
     out.insert(String::from("create-address"), create_address_cmd);
     out.insert(String::from("test-load-keypair"), test_load_keypair_cmd);
+    out.insert(String::from("connect"), connect_cmd);
+    out.insert(String::from("start-seed"), start_seed_cmd);
 
     out
 }
