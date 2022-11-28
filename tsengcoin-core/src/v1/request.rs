@@ -1,4 +1,5 @@
-use std::{net::{SocketAddr, TcpStream}, error::Error, sync::{Mutex}};
+use std::{net::{SocketAddr, TcpStream}, error::Error};
+use std::sync::Mutex;
 
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
@@ -222,7 +223,16 @@ pub fn advertise_self(state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
         addr_me
     });
 
-    state.network.broadcast(&req);
+    state.network.broadcast_msg(&req);
+
+    Ok(())
+}
+
+/// Broadcast a new transaction to the network. Assumes the transaction is valid - it is
+/// the caller's job to check this beforehand.
+pub fn send_new_txn(txn: Transaction, state: &State) -> Result<(), Box<dyn Error>> {
+    // TODO: Pay attention to these errors
+    state.network.broadcast_msg(&Request::NewTxn(txn));
 
     Ok(())
 }
@@ -234,4 +244,11 @@ pub fn send_req(req: &Request, addr: &SocketAddr) -> bincode::Result<Response> {
     let res: Response = bincode::deserialize_from(&socket)?;
 
     Ok(res)
+}
+
+pub fn send_msg(msg: &Request, addr: &SocketAddr) -> bincode::Result<()> {
+    let socket = TcpStream::connect(addr)?;
+    bincode::serialize_into(&socket, &msg)?;
+
+    Ok(())
 }

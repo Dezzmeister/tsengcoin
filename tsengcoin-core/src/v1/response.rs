@@ -1,18 +1,17 @@
-use std::{net::{TcpStream, SocketAddr}, error::Error, sync::{Mutex}};
+use std::{net::{TcpStream, SocketAddr}, error::Error};
+use std::sync::Mutex;
 
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 
 use crate::wallet::Hash256;
 
-use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::Block, verify_error::VerifyResult, transaction::Transaction, verify::verify_transaction};
+use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::Block, transaction::Transaction, verify::verify_transaction};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
     GetAddr(GetAddrRes),
-    AdvertiseRes,
     GetBlocks(GetBlocksRes),
-    NewTxn(VerifyResult<()>)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -88,13 +87,11 @@ fn handle_get_addr(data: GetAddrReq, socket: &TcpStream, state_mut: &Mutex<State
     Ok(())
 }
 
-fn handle_advertise(data: AdvertiseReq, socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+fn handle_advertise(data: AdvertiseReq, _socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
     let addr_you = data.addr_me;
 
     let mut guard = state_mut.lock().unwrap();
     let state = &mut *guard;
-
-    send_res(Response::AdvertiseRes, socket)?;
 
     let addr_me = state.remote_addr_me.unwrap();
 
@@ -106,8 +103,11 @@ fn handle_advertise(data: AdvertiseReq, socket: &TcpStream, state_mut: &Mutex<St
         addr: addr_you
     });
 
-    state.network.broadcast(&Request::Advertise(data));
+    state.network.broadcast_msg(&Request::Advertise(AdvertiseReq {
+        addr_me: data.addr_me
+    }));
 
+    
     if rand::random::<u8>() % 2 == 0 {
         let (best_height, chain_idx, _) = state.blockchain.best_chain();
 
@@ -168,7 +168,7 @@ fn handle_get_blocks(data: GetBlocksReq, socket: &TcpStream, state_mut: &Mutex<S
     Ok(())
 }
 
-pub fn handle_new_txn(data: Transaction, socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
     let mut guard = state_mut.lock().unwrap();
     let state = &mut *guard;
 
@@ -177,11 +177,10 @@ pub fn handle_new_txn(data: Transaction, socket: &TcpStream, state_mut: &Mutex<S
         return Ok(());
     }
 
-    let verify_result = verify_transaction(data.clone(), state_mut);
+    let verify_result = verify_transaction(data.clone(), state);
 
     let is_orphan = match verify_result {
-        Err(err) => {
-            send_res(Response::NewTxn(Err(err)), socket)?;
+        Err(_) => {
             return Ok(());
         },
         Ok(is_orphan) => is_orphan
@@ -195,7 +194,7 @@ pub fn handle_new_txn(data: Transaction, socket: &TcpStream, state_mut: &Mutex<S
         }
     };
 
-    state.network.broadcast(&Request::NewTxn(data));
+    state.network.broadcast_msg(&Request::NewTxn(data));
 
     Ok(())
 }

@@ -217,8 +217,6 @@ fn op_require_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
         (_, _) => return Err(Box::new(InvalidTokenType)),
     };
 
-    stack.push(Token::Bool(true));
-
     Ok(())
 }
 

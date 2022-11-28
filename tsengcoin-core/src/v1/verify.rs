@@ -1,10 +1,8 @@
-use std::sync::Mutex;
-
 use num_bigint::BigUint;
 
 use crate::tsengscript_interpreter::{Token, execute};
 
-use super::{verify_error::{VerifyResult}, transaction::{Transaction, MAX_TXN_AMOUNT, UnsignedTransaction, MIN_TXN_FEE}, block::MAX_BLOCK_SIZE, state::State};
+use super::{verify_error::{VerifyResult}, transaction::{Transaction, MAX_TXN_AMOUNT, UnsignedTransaction, MIN_TXN_FEE, UnhashedTransaction, hash_txn}, block::MAX_BLOCK_SIZE, state::State};
 use super::verify_error::ErrorKind::EmptyInputs;
 use super::verify_error::ErrorKind::EmptyOutputs;
 use super::verify_error::ErrorKind::TooLarge;
@@ -16,15 +14,13 @@ use super::verify_error::ErrorKind::BadUnlockScript;
 use super::verify_error::ErrorKind::Overspend;
 use super::verify_error::ErrorKind::LowFee;
 use super::verify_error::ErrorKind::DoubleSpend;
+use super::verify_error::ErrorKind::InvalidHash;
 
 /// Verifies the transaction according to an independent set of rules. If there are no errors,
 /// returns 'true' if the transaction is an orphan, and false if not. If the transaction is an orphan,
 /// it should be added to the pending transactions pool. This function does not mutate the state in any way
 /// so adding valid transactions to their respective pools is the caller's responsibility.
-pub fn verify_transaction(tx: Transaction, state_mut: &Mutex<State>) -> VerifyResult<bool> {
-    let guard = state_mut.lock().unwrap();
-    let state = &*guard;
-
+pub fn verify_transaction(tx: Transaction, state: &State) -> VerifyResult<bool> {
     let utxos = &state.blockchain.utxo_pool;
 
     // Transaction must have at least 1 input
@@ -56,6 +52,15 @@ pub fn verify_transaction(tx: Transaction, state_mut: &Mutex<State>) -> VerifyRe
     if zero_hash.is_some() {
         return Err(Box::new(Coinbase));
     }
+
+    // The transaction hash must be valid
+    let unhashed_tx: UnhashedTransaction = (&tx).into();
+    let hash_res = hash_txn(&unhashed_tx);
+    match hash_res {
+        Err(_) => return Err(Box::new(InvalidHash)),
+        Ok(hash) if hash != tx.hash => return Err(Box::new(InvalidHash)),
+        _ => ()
+    };
 
     let unsigned_tx: UnsignedTransaction = (&tx).into();
     let msg_data = bincode::serialize(&unsigned_tx).unwrap();

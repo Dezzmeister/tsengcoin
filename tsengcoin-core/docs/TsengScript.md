@@ -17,7 +17,7 @@ Operators take arguments which must be present on the stack when the operator is
 - `(op2: Bool | UByteSeq) (op1: Bool | UByteSeq) EQUAL` -> `Bool`
   - Compares `op1` and `op2` and pushes the result on the stack.
 - `(op2: Bool | UByteSeq) (op1: Bool | UByteSeq) REQUIRE_EQUAL` -> `Bool`
-  - Compares `op1` and `op2`. If they are equal, pushes `TRUE` on the stack. If they are not equal, throws an error.
+  - Compares `op1` and `op2`. If they are equal, does nothing and continues execution normally. If they are not equal, throws an error.
 - `(op: T) DUP` -> `T`
   - Duplicates `op` and pushes it on the stack. `op` can have any type.
 - `(op: UByteSeq) HASH160` -> `UByteSeq`

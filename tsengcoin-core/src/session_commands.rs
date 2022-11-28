@@ -1,6 +1,14 @@
-use std::{sync::Mutex, collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error};
+use std::sync::Mutex;
 
-use crate::{command::{dispatch_command, CommandInvocation, Command, FieldType, Field, Flag}, v1::{state::State, transaction::{get_p2pkh_addr}}};
+use ring::signature::KeyPair;
+
+use crate::v1::request::send_new_txn;
+use crate::v1::{VERSION};
+use crate::v1::transaction::{p2pkh_utxos_for_addr, make_p2pkh_lock, collect_enough_change, TxnOutput, UnsignedTransaction, sign_txn, make_p2pkh_unlock, TxnInput, UnhashedTransaction, hash_txn};
+use crate::v1::verify::verify_transaction;
+use crate::wallet::b58c_to_address;
+use crate::{command::{dispatch_command, CommandInvocation, Command, FieldType, Field, Flag}, v1::{state::State}};
 
 fn getpeerinfo(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
@@ -70,36 +78,103 @@ fn balance_p2pkh(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) 
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
-    let my_utxos = 
-        state.blockchain.utxo_pool.utxos
-            .iter()
-            .fold(vec![] as Vec<u64>, |mut a, u| {
-                let txn = state.get_pending_or_confirmed_txn(u.txn).unwrap();
-                let mut outputs = 
-                    u.outputs
-                        .iter()
-                        .map(|idx| &txn.outputs[*idx])
-                        .filter(|out| {
-                            let dest_addr = get_p2pkh_addr(&out.lock_script.code);
-                            match dest_addr {
-                                None => false,
-                                Some(dest) => dest == state.address
-                            }
-                        })
-                        .map(|out| out.amount)
-                        .collect::<Vec<u64>>();
-
-                a.append(&mut outputs);
-                a
-            });
+    let my_utxos = p2pkh_utxos_for_addr(state, state.address);
     
     let total_unspent = 
         my_utxos
             .iter()
-            .fold(0, |a, e| a + e);
+            .fold(0, |a, e| a + e.amount);
 
     println!("You have {} total unspent TsengCoin", total_unspent);
     
+    Ok(())
+}
+
+fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let pkh = invocation.get_field("dest-address").unwrap();
+    let amount = invocation.get_field("amount").unwrap().parse::<u64>().unwrap();
+    let fee = invocation.get_field("fee").unwrap().parse::<u64>().unwrap();
+    let show_structure = invocation.get_flag("show-structure");
+    let guard = state.unwrap().lock().unwrap();
+    let state = &*guard;
+
+    let required_input = amount + fee;
+
+    let change = match collect_enough_change(state, state.address, required_input) {
+        None => {
+            println!("You don't have enough TsengCoin to make that transaction");
+            return Ok(());
+        },
+        Some(utxos) => utxos
+    };
+
+    let actual_input = 
+        change
+            .iter()
+            .fold(0, |a, e| a + e.amount);
+    
+    let dest_address = b58c_to_address(pkh)?;
+    let lock_script = make_p2pkh_lock(&dest_address);
+    let mut outputs: Vec<TxnOutput> = vec![TxnOutput { amount, lock_script }];
+
+    let change_back = actual_input - required_input;
+
+    if change_back > 0 {
+        let my_lock_script = make_p2pkh_lock(&state.address);
+
+        outputs.push(TxnOutput {
+            amount: change_back,
+            lock_script: my_lock_script
+        });
+    }
+
+    let metadata = String::from("");
+    
+    let unsigned_txn = UnsignedTransaction {
+        version: VERSION,
+        outputs: outputs.clone(),
+        meta: metadata.clone(),
+    };
+
+    let sig = sign_txn(&unsigned_txn, &state.keypair)?;
+    let pubkey = state.keypair.public_key().as_ref().to_vec();
+    let unlock_script = make_p2pkh_unlock(sig, pubkey);
+    let txn_inputs =
+        change
+            .iter()
+            .map(|c| {
+                TxnInput {
+                    txn_hash: c.txn,
+                    output_idx: c.output,
+                    unlock_script: unlock_script.clone(),
+                }
+            })
+            .collect::<Vec<TxnInput>>();
+
+    let unhashed = UnhashedTransaction {
+        version: VERSION,
+        inputs: txn_inputs,
+        outputs,
+        meta: metadata,
+    };
+
+    let hash = hash_txn(&unhashed)?;
+    let full_txn = unhashed.to_hashed(hash);
+
+    if show_structure {
+        println!("{:#?}", full_txn.clone());
+    }
+
+    match verify_transaction(full_txn.clone(), state) {
+        Ok(_) => {
+            send_new_txn(full_txn, state)?;
+            println!("Successfully submitted transaction");
+        },
+        Err(err) => {
+            println!("There was a problem verifying your transaction: {}", err.to_string())
+        }
+    };
+
     Ok(())
 }
 
@@ -146,12 +221,40 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         flags: vec![],
         desc: String::from("Get the total unspent balance of your wallet. Balance may change if the network is forked.")
     };
+    let send_coins_p2pkh_cmd: Command<&Mutex<State>> = Command {
+        processor: send_coins_p2pkh,
+        expected_fields: vec![
+            Field::new(
+                "dest-address",
+                FieldType::Pos(0),
+                "The address you want to send TsengCoin to"
+            ),
+            Field::new(
+                "amount",
+                FieldType::Pos(1),
+                "The amount of TsengCoin you want to send"
+            ),
+            Field::new(
+                "fee",
+                FieldType::Pos(2),
+                "The transaction fee you will pay, must be nonzero"
+            )
+        ],
+        flags: vec![
+            Flag::new(
+                "show-structure",
+                "Show the structure of the transaction after it is created"
+            )
+        ],
+        desc: String::from("Send a recipient TsengCoins in a P2PKH transaction. This is the most widely used style of transaction")
+    };
 
     command_map.insert(String::from("getpeerinfo"), getpeerinfo_cmd);
     command_map.insert(String::from("getknowninfo"), getknowninfo_cmd);
     command_map.insert(String::from("getblock"), getblock_cmd);
     command_map.insert(String::from("blockchain-stats"), blockchain_stats_cmd);
     command_map.insert(String::from("balance-p2pkh"), balance_p2pkh_cmd);
+    command_map.insert(String::from("send-coins-p2pkh"), send_coins_p2pkh_cmd);
 
     let mut buffer = String::new();
     let stdin = std::io::stdin();

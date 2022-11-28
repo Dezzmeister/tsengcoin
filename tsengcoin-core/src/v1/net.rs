@@ -1,4 +1,5 @@
-use std::{net::{SocketAddr, TcpStream, TcpListener}, error::Error, cmp::min, sync::Mutex};
+use std::{net::{SocketAddr, TcpStream, TcpListener}, error::Error, cmp::min};
+use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 use rand::seq::SliceRandom;
@@ -6,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::wallet::Hash256;
 
-use super::{request::{Request, send_req, GetAddrReq}, response::{Response, handle_request}, state::State};
+use super::{request::{Request, send_req, GetAddrReq, send_msg}, response::{Response, handle_request}, state::State};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_NEIGHBORS: usize = 8;
@@ -150,15 +151,26 @@ impl Network {
         // We need these scoped threads because the Rust compiler doesn't know that the threads
         // won't outlive 'self'. We know this as programmers because 'join' is called on every thread
         // a few lines below.
-        crossbeam::scope(|scope| {
-            self.peers
-                .iter()
-                .map(|n| scope.spawn(move |_| {
-                    send_req(req, &n.addr)
-                }))
-                .map(|h| h.join().unwrap())
-                .collect::<Vec<Result<Response, Box<bincode::ErrorKind>>>>()
-        }).unwrap()
+
+        self.peers
+            .iter()
+            .map(|n| send_req(req, &n.addr))
+            .collect::<Vec<Result<Response, Box<bincode::ErrorKind>>>>()
+    }
+
+    pub fn broadcast_except(&self, except: SocketAddr, req: &Request) -> Vec<Result<Response, Box<bincode::ErrorKind>>> {
+        self.peers
+            .iter()
+            .filter(|n| *n != except)
+            .map(|n| send_req(req, &n.addr))
+            .collect::<Vec<Result<Response, Box<bincode::ErrorKind>>>>()
+    }
+
+    pub fn broadcast_msg(&self, msg: &Request) -> Vec<Result<(), Box<bincode::ErrorKind>>> {
+        self.peers
+            .iter()
+            .map(|n| send_msg(msg, &n.addr))
+            .collect::<Vec<Result<(), Box<bincode::ErrorKind>>>>()
     }
 
     /// Pick new peers at random from the list of known peers. If the network is large enough then we

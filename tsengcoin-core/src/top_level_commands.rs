@@ -1,4 +1,5 @@
-use std::{collections::HashMap, error::Error, net::{SocketAddr, IpAddr, Ipv4Addr}, sync::{Mutex, Arc}, thread};
+use std::{collections::HashMap, error::Error, net::{SocketAddr, IpAddr, Ipv4Addr}, sync::{Arc}, thread};
+use std::sync::Mutex;
 
 use ring::signature::KeyPair;
 
