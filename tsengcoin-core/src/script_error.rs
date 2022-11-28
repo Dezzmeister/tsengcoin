@@ -3,9 +3,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type ScriptResult<T> = std::result::Result<T, ScriptError>;
 
-pub type Error = Box<ErrorKind>;
+pub type ScriptError = Box<ErrorKind>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ErrorKind {

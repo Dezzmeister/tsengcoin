@@ -9,7 +9,9 @@ pub struct Command<T> {
     pub desc: String
 }
 
-pub type CommandProcessor<T> = fn (command_name: &String, invocation: &CommandInvocation, state: Option<T>) -> Result<(), Box<dyn Error>>;
+/// The function that actually executes the command. Accepts the parameters passed into the command,
+/// and the state/context object
+pub type CommandProcessor<T> = fn (invocation: &CommandInvocation, state: Option<T>) -> Result<(), Box<dyn Error>>;
 pub type CommandMap<T> = HashMap<String, Command<T>>;
 pub struct CommandInvocation {
     /// The name of the command that was invoked
@@ -107,7 +109,7 @@ pub fn dispatch_command<T>(args: &Vec<String>, map: &CommandMap<T>, state: Optio
 
     let invocation = decompose_raw_args(args, &command.expected_fields).expect("Failed to decompose command");
 
-    match (command.processor)(cmd_name, &invocation, state) {
+    match (command.processor)(&invocation, state) {
         Err(err) => println!("Error executing command: {:?}", err),
         Ok(_) => (),
     }

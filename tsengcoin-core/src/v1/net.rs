@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
+use crate::wallet::Hash256;
+
 use super::{request::{Request, send_req, GetAddrReq}, response::{Response, handle_request}, state::State};
 
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -14,11 +16,29 @@ pub struct DistantNode {
     pub addr: SocketAddr
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Node {
     pub version: u32,
     pub addr: SocketAddr,
     pub last_send: DateTime<Utc>,
+    pub best_height: Option<usize>,
+    pub best_hash: Option<Hash256>,
+}
+
+impl std::fmt::Debug for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let hash_debug = match self.best_hash {
+            None => None,
+            Some(hash) => Some(hex::encode(hash))
+        };
+
+        f.debug_struct("Node")
+            .field("version", &self.version)
+            .field("addr", &self.addr)
+            .field("last_send", &self.last_send)
+            .field("best_height", &self.best_height)
+            .field("best_hash", &hash_debug).finish()
+    }
 }
 
 impl PartialEq for Node {
@@ -146,7 +166,7 @@ impl Network {
     /// a 'GetAddr' request to get some crucial info. There may be several nodes, so this step is done in parallel.
     /// We then wait for and collect the responses to these requests and loop over them. For any bad response, we 
     /// drop the node from our list of known nodes. We keep the good responses and use them as our peers.
-    pub fn find_new_friends(&mut self, listen_port: u16, addr_me: SocketAddr, best_height: u64) {
+    pub fn find_new_friends(&mut self, listen_port: u16, addr_me: SocketAddr, best_height: usize, best_hash: Hash256) {
         self.shuffle();
         let num_peers = min(self.known_nodes.len(), MAX_NEIGHBORS);
         let new_peers = 
@@ -163,7 +183,8 @@ impl Network {
                         version: PROTOCOL_VERSION,
                         addr_you: *addr,
                         listen_port,
-                        best_height
+                        best_height,
+                        best_hash
                     });
 
                     send_req(&req, addr)
@@ -184,6 +205,8 @@ impl Network {
                         version: data.version,
                         addr: addr_you,
                         last_send: Utc::now(),
+                        best_height: Some(data.best_height),
+                        best_hash: Some(data.best_hash)
                     };
 
                     self.peers.push(node);
@@ -213,6 +236,24 @@ impl Network {
         where DistantNode: PartialEq<T>
     {
         self.known_nodes.iter().find(|n| **n == item).is_some()
+    }
+
+    /// Get the node with the best block height. Returns None if there are no nodes
+    /// with a block height greater than zero.
+    pub fn most_updated_node<'a>(&'a self) -> Option<&'a Node> {
+        let mut best_height: usize = 0;
+        let mut best_node: Option<&'a Node> = None;
+
+        for node in &self.peers {
+            let best_height_opt = node.best_height;
+
+            if best_height_opt.is_some() && best_height_opt.unwrap() > best_height {
+                best_height = best_height_opt.unwrap();
+                best_node = Some(node);
+            }
+        }
+
+        best_node
     }
 }
 

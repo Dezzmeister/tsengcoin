@@ -4,9 +4,10 @@ pub mod v1;
 pub mod command;
 pub mod wallet;
 pub mod tsengscript_interpreter;
-pub mod error;
+pub mod script_error;
 pub mod top_level_commands;
 pub mod session_commands;
+pub mod difficulty;
 
 use std::{error::Error, env};
 

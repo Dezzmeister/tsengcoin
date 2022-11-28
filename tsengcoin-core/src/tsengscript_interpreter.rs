@@ -1,15 +1,16 @@
 use std::fmt::Debug;
 use std::{collections::HashMap};
 use num_bigint::BigUint;
+use ring::signature;
 
-use crate::error::Result;
-use crate::error::ErrorKind::ScriptTooLong;
-use crate::error::ErrorKind::InvalidScriptToken;
-use crate::error::ErrorKind::ScriptStackUnderflow;
-use crate::error::ErrorKind::ScriptStackOverflow;
-use crate::error::ErrorKind::InvalidTokenType;
-use crate::error::ErrorKind::IntegerOverflow;
-use crate::error::ErrorKind::EqualVerifyFailed;
+use crate::script_error::ScriptResult;
+use crate::script_error::ErrorKind::ScriptTooLong;
+use crate::script_error::ErrorKind::InvalidScriptToken;
+use crate::script_error::ErrorKind::ScriptStackUnderflow;
+use crate::script_error::ErrorKind::ScriptStackOverflow;
+use crate::script_error::ErrorKind::InvalidTokenType;
+use crate::script_error::ErrorKind::IntegerOverflow;
+use crate::script_error::ErrorKind::EqualVerifyFailed;
 use crate::wallet::address_from_public_key;
 
 /// Scripts can be 1kb max to mitigate malicious transactions
@@ -20,7 +21,7 @@ const MAX_SCRIPT_LEN: usize = 1024;
 /// in the future
 const MAX_STACK_SIZE: usize = 2048;
 
-type OperatorFn = fn(stack: &mut Vec<Token>) -> Result<()>;
+type OperatorFn = fn(stack: &mut Vec<Token>) -> ScriptResult<()>;
 
 #[derive(Clone)]
 pub enum Token {
@@ -47,12 +48,13 @@ pub struct ExecutionResult {
 fn make_operator_name_map() -> HashMap<String, OperatorFn> {
     let mut out: HashMap<String, OperatorFn> = HashMap::new();
 
-    out.insert(String::from("OP_ADD"), op_add);
-    out.insert(String::from("OP_SUB"), op_sub);
-    out.insert(String::from("OP_EQUAL"), op_equal);
-    out.insert(String::from("OP_REQUIRE_EQUAL"), op_require_equal);
-    out.insert(String::from("OP_DUP"), op_dup);
-    out.insert(String::from("HASH160"), hash160);
+    out.insert(String::from("ADD"), op_add);
+    out.insert(String::from("SUB"), op_sub);
+    out.insert(String::from("EQUAL"), op_equal);
+    out.insert(String::from("REQUIRE_EQUAL"), op_require_equal);
+    out.insert(String::from("DUP"), op_dup);
+    out.insert(String::from("HASH160"), op_hash160);
+    out.insert(String::from("CHECKSIG"), op_checksig);
 
     out
 }
@@ -61,7 +63,7 @@ fn split(input: &String) -> Vec<String> {
     input.split(" ").map(|s| s.to_owned()).collect()
 }
 
-fn tokenize(raw_tokens: &Vec<String>) -> Result<Vec<Token>> {
+fn tokenize(raw_tokens: &Vec<String>) -> ScriptResult<Vec<Token>> {
     let mut out: Vec<Token> = vec![];
     let operator_map = make_operator_name_map();
 
@@ -105,7 +107,7 @@ fn tokenize(raw_tokens: &Vec<String>) -> Result<Vec<Token>> {
 }
 
 /// Executes a TsengScript, returning the top of the stack plus the stack's contents.
-pub fn execute(script: &String) -> Result<ExecutionResult> {
+pub fn execute(script: &String, stack_init: &Vec<Token>) -> ScriptResult<ExecutionResult> {
     let script_len = script.as_bytes().len();
     if script_len > MAX_SCRIPT_LEN {
         return Err(Box::new(ScriptTooLong(MAX_SCRIPT_LEN, script_len)));
@@ -113,7 +115,7 @@ pub fn execute(script: &String) -> Result<ExecutionResult> {
 
     let raw_tokens = split(script);
     let tokens = tokenize(&raw_tokens)?;
-    let mut stack: Vec<Token> = vec![];
+    let mut stack: Vec<Token> = stack_init.clone();
 
     for token in tokens {
         match token {
@@ -130,7 +132,7 @@ pub fn execute(script: &String) -> Result<ExecutionResult> {
     Ok(ExecutionResult { top: stack.last().cloned(), stack })
 }
 
-fn op_add(stack: &mut Vec<Token>) -> Result<()> {
+fn op_add(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 2 {
         return Err(Box::new(ScriptStackUnderflow))
     }
@@ -149,7 +151,7 @@ fn op_add(stack: &mut Vec<Token>) -> Result<()> {
     Ok(())
 }
 
-fn op_sub(stack: &mut Vec<Token>) -> Result<()> {
+fn op_sub(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 2 {
         return Err(Box::new(ScriptStackUnderflow))
     }
@@ -172,7 +174,7 @@ fn op_sub(stack: &mut Vec<Token>) -> Result<()> {
     Ok(())
 }
 
-fn op_equal(stack: &mut Vec<Token>) -> Result<()> {
+fn op_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 2 {
         return Err(Box::new(ScriptStackUnderflow))
     }
@@ -193,7 +195,7 @@ fn op_equal(stack: &mut Vec<Token>) -> Result<()> {
     Ok(())
 }
 
-fn op_require_equal(stack: &mut Vec<Token>) -> Result<()> {
+fn op_require_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 2 {
         return Err(Box::new(ScriptStackUnderflow))
     }
@@ -220,7 +222,7 @@ fn op_require_equal(stack: &mut Vec<Token>) -> Result<()> {
     Ok(())
 }
 
-fn op_dup(stack: &mut Vec<Token>) -> Result<()> {
+fn op_dup(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 1 {
         return Err(Box::new(ScriptStackUnderflow))
     }
@@ -233,7 +235,7 @@ fn op_dup(stack: &mut Vec<Token>) -> Result<()> {
     Ok(())
 }
 
-fn hash160(stack: &mut Vec<Token>) -> Result<()> {
+fn op_hash160(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 1 {
         return Err(Box::new(ScriptStackUnderflow))
     }
@@ -248,6 +250,29 @@ fn hash160(stack: &mut Vec<Token>) -> Result<()> {
             stack.push(Token::UByteSeq(BigUint::from_bytes_be(&hash)));
         },
         _ => return Err(Box::new(InvalidTokenType)),
+    };
+
+    Ok(())
+}
+
+fn op_checksig(stack: &mut Vec<Token>) -> ScriptResult<()> {
+    if stack.len() < 3 {
+        return Err(Box::new(ScriptStackUnderflow))
+    }
+
+    let pkey_token = stack.pop().unwrap();
+    let sig_token = stack.pop().unwrap();
+    let data_token = stack.pop().unwrap();
+
+    match (pkey_token, sig_token, data_token) {
+        (Token::UByteSeq(pkey), Token::UByteSeq(sig), Token::UByteSeq(data)) => {
+            let public_key_bytes = pkey.to_bytes_be();
+            let public_key = signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_ASN1, &public_key_bytes);
+            let is_valid = public_key.verify(&data.to_bytes_be(), &sig.to_bytes_be()).is_ok();
+
+            stack.push(Token::Bool(is_valid));
+        },
+        (_, _, _) => return Err(Box::new(InvalidTokenType))
     };
 
     Ok(())

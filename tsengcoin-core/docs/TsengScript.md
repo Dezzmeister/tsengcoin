@@ -10,25 +10,27 @@ The language is very simple. Tokens are delimited by spaces, and then "executed"
 
 Operators take arguments which must be present on the stack when the operator is called. This means that using an operator may look something like this: `(arg2) (arg1) OPERATOR`. In this case, `arg2` is pushed onto the stack, then `arg1`, then `OPERATOR` is an operator that takes two arguments so `arg1` is popped off the stack as the first argument, then `arg2` is popped off as the second argument, then the result of `(arg2) (arg1) OPERATOR` is evaluated and pushed on the stack. There are several operators, listed here with their arguments:
 
-- `(op2: UByteSeq) (op1: UByteSeq) OP_ADD` -> `UByteSeq`
+- `(op2: UByteSeq) (op1: UByteSeq) ADD` -> `UByteSeq`
   - Adds `op1` and `op2` without overflow and pushes the sum on the stack.
-- `(op2: UByteSeq) (op1: UByteSeq) OP_SUB` -> `UByteSeq`
+- `(op2: UByteSeq) (op1: UByteSeq) SUB` -> `UByteSeq`
   - Performs `op1 - op2` (with overflow, because the arguments are unsigned) and pushes the result on the stack.
-- `(op2: Bool | UByteSeq) (op1: Bool | UByteSeq) OP_EQUAL` -> `Bool`
+- `(op2: Bool | UByteSeq) (op1: Bool | UByteSeq) EQUAL` -> `Bool`
   - Compares `op1` and `op2` and pushes the result on the stack.
-- `(op2: Bool | UByteSeq) (op1: Bool | UByteSeq) OP_REQUIRE_EQUAL` -> `Bool`
+- `(op2: Bool | UByteSeq) (op1: Bool | UByteSeq) REQUIRE_EQUAL` -> `Bool`
   - Compares `op1` and `op2`. If they are equal, pushes `TRUE` on the stack. If they are not equal, throws an error.
-- `(op: T) OP_DUP` -> `T`
+- `(op: T) DUP` -> `T`
   - Duplicates `op` and pushes it on the stack. `op` can have any type.
 - `(op: UByteSeq) HASH160` -> `UByteSeq`
   - Hashes the given byte sequence using `RIPEMD160(SHA256(op))` and pushes the result on the stack.
+- `(data: UByteSeq) (sig: UByteSeq) (public_key: UByteSeq) CHECKSIG` -> `Bool`
+  - Checks that the public key matches the private key used to generate `sig` for `data`. This is used in pay-to-public-key-hash (P2PKH) transactions in which a locking script specifies that an unlocking script must produce a signature satisfying the recipient's public key.
 
 More operators coming soon; we still need operators to check ECDSA signatures.
 
 Here is an example TsengScript program:
 
 ```
-5 2 OP_ADD 9 OP_SUB 2 OP_EQUAL
+5 2 ADD 9 SUB 2 EQUAL
 ```
 
 <hr>
@@ -36,7 +38,7 @@ Here is an example TsengScript program:
 _You can run this program directly from the command line with_
 
 ```
-cargo run run-script [--show-stack] 5 2 OP_ADD 9 OP_SUB 2 OP_EQUAL
+cargo run run-script [--show-stack] 5 2 ADD 9 SUB 2 EQUAL
 ```
 
 _If `--show-stack` is provided, the stack at the end of the program's execution will be printed._
@@ -51,7 +53,7 @@ This program starts with two UByteSeq hex literals that are pushed onto the stac
 
 The arrow indicates the direction in which the stack grows.
 
-`OP_ADD` pops the two operands off the stack and pushes the result on, so that the stack looks like this:
+`ADD` pops the two operands off the stack and pushes the result on, so that the stack looks like this:
 
 ```
 | 7 | ->
@@ -63,7 +65,7 @@ The hex literal 9 is pushed onto the stack:
 | 7 | 9 | ->
 ```
 
-`OP_SUB` pops its two operands off the stack. The first argument is the topmost token on the stack and the second argument is the one below it. `OP_SUB` here performs `9 - 7` and pushes the result on the stack:
+`SUB` pops its two operands off the stack. The first argument is the topmost token on the stack and the second argument is the one below it. `SUB` here performs `9 - 7` and pushes the result on the stack:
 
 ```
 | 2 | ->
@@ -75,7 +77,7 @@ The hex literal `2` is pushed on the stack:
 | 2 | 2 | ->
 ```
 
-Finally, `OP_EQUAL` pops its two operands off the stack and compares them. If the operands have different types, `OP_EQUAL` throws an error. In this case both types are `UByteSeq`, so we can compare them. `OP_EQUAL` pushes the result of the comparison on the stack:
+Finally, `EQUAL` pops its two operands off the stack and compares them. If the operands have different types, `EQUAL` throws an error. In this case both types are `UByteSeq`, so we can compare them. `EQUAL` pushes the result of the comparison on the stack:
 
 ```
 | TRUE | ->

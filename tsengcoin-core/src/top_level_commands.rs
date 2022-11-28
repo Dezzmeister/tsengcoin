@@ -2,12 +2,12 @@ use std::{collections::HashMap, error::Error, net::{SocketAddr, IpAddr, Ipv4Addr
 
 use ring::signature::KeyPair;
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self}, state::State, net::listen_for_connections}, session_commands::listen_for_commands};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections}, session_commands::listen_for_commands, difficulty::get_difficulty_target};
 
-fn run_script(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn run_script(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let script = invocation.get_field("script").unwrap();
     let show_stack = invocation.get_flag("show-stack");
-    let ExecutionResult{top, stack } = execute(&script)?;
+    let ExecutionResult{top, stack } = execute(&script, &vec![])?;
 
     match top {
         None => println!("Stack was empty"),
@@ -23,7 +23,7 @@ fn run_script(_command_name: &String, invocation: &CommandInvocation, _state: Op
     Ok(())
 }
 
-fn random_test_address(_command_name: &String, _invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn random_test_address(_invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let rand_bytes: [u8; 32] = rand::random();
     let address = address_from_public_key(&rand_bytes.to_vec());
 
@@ -32,7 +32,7 @@ fn random_test_address(_command_name: &String, _invocation: &CommandInvocation, 
     Ok(())
 }
 
-fn b58c_encode(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn b58c_encode(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let raw = invocation.get_field("hex-bytes").unwrap();
     let bytes = hex::decode(raw)?;
     let encoded = address_to_b58c(&bytes);
@@ -42,7 +42,7 @@ fn b58c_encode(_command_name: &String, invocation: &CommandInvocation, _state: O
     Ok(())
 }
 
-fn b58c_decode(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn b58c_decode(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let raw = invocation.get_field("encoded").unwrap();
     let decoded = b58c_to_address(raw)?;
     let hex_str = hex::encode(decoded);
@@ -52,7 +52,7 @@ fn b58c_decode(_command_name: &String, invocation: &CommandInvocation, _state: O
     Ok(())
 }
 
-fn create_address(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn create_address(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let path = invocation.get_field("keypair-path").unwrap();
     let password = invocation.get_field("password").unwrap();
     let keypair = create_keypair(&password, &path)?;
@@ -67,7 +67,7 @@ fn create_address(_command_name: &String, invocation: &CommandInvocation, _state
     Ok(())
 }
 
-fn test_load_keypair(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn test_load_keypair(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let path = invocation.get_field("keypair-path").unwrap();
     let password = invocation.get_field("password").unwrap();
     let keypair = load_keypair(&password, &path)?;
@@ -83,7 +83,7 @@ fn test_load_keypair(_command_name: &String, invocation: &CommandInvocation, _st
     Ok(())
 }
 
-fn connect(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let seed_ip = invocation.get_field("seed-ip").unwrap().parse::<IpAddr>().unwrap();
     let seed_port = invocation.get_field("seed-port").unwrap().parse::<u16>().unwrap();
     let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
@@ -101,13 +101,14 @@ fn connect(_command_name: &String, invocation: &CommandInvocation, _state: Optio
 
     println!("Connecting to node at {} and starting bootstrap process", seed_addr);
 
-    let state = State::new(addr_me);
+    let state = State::new(addr_me, keypair);
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
 
     get_first_peers(seed_addr, &state_arc)?;
     discover(seed_addr, &state_arc)?;
+    download_latest_blocks(&state_arc)?;
 
     thread::spawn(move || {
         println!("Starting network listener thread");
@@ -124,7 +125,7 @@ fn connect(_command_name: &String, invocation: &CommandInvocation, _state: Optio
     Ok(())
 }
 
-fn start_seed(_command_name: &String, invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
     let wallet_password = invocation.get_field("wallet-password").unwrap();
@@ -137,7 +138,7 @@ fn start_seed(_command_name: &String, invocation: &CommandInvocation, _state: Op
 
     let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
 
-    let state = State::new(addr_me);
+    let state = State::new(addr_me, keypair);
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -151,6 +152,23 @@ fn start_seed(_command_name: &String, invocation: &CommandInvocation, _state: Op
 
     println!("Type a command, or 'help' for a list of commands");
     listen_for_commands(&state_arc);
+
+    Ok(())
+}
+
+fn get_target(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+    let bits_str = invocation.get_field("difficulty-bits").unwrap();
+    let bytes = hex::decode(bits_str)?;
+    let bits: u32 = 
+        ((bytes[0] as u32) << 24) |
+        ((bytes[1] as u32) << 16) |
+        ((bytes[2] as u32) << 8) |
+        (bytes[3] as u32);
+
+    let target = get_difficulty_target(bits);
+    let encoded = hex::encode(target);
+
+    println!("{}", encoded);
 
     Ok(())
 }
@@ -291,6 +309,18 @@ pub fn make_command_map() -> CommandMap<()> {
         flags: vec![],
         desc: String::from("Start as a full node without bootstrapping. The node will not attempt to connect to any network, and it will use whatever blockchain data it has locally.")
     };
+    let get_target_cmd: Command<()> = Command {
+        processor: get_target,
+        expected_fields: vec![
+            Field::new(
+                "difficulty-bits",
+                FieldType::Pos(0),
+                "4-byte unsigned difficulty bits. The first 8 bits is the exponent, and the next 24 bits is the mantissa"
+            )
+        ],
+        flags: vec![],
+            desc: String::from("Calculate the target hash given the difficulty")
+    };
 
     out.insert(String::from("run-script"), run_script_cmd);
     out.insert(String::from("random-test-address-hex"), random_test_address_hex_cmd);
@@ -300,6 +330,7 @@ pub fn make_command_map() -> CommandMap<()> {
     out.insert(String::from("test-load-keypair"), test_load_keypair_cmd);
     out.insert(String::from("connect"), connect_cmd);
     out.insert(String::from("start-seed"), start_seed_cmd);
+    out.insert(String::from("get-target"), get_target_cmd);
 
     out
 }
