@@ -1,4 +1,7 @@
-use chrono::{DateTime, Utc, TimeZone};
+use std::mem::size_of_val;
+
+use chrono::{DateTime, Utc, TimeZone, Duration};
+use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_traits::Zero;
 use ring::digest::{Context, SHA256};
@@ -6,10 +9,14 @@ use serde::{Serialize, Deserialize};
 
 use crate::{wallet::{Hash256, b58c_to_address}};
 
-use super::transaction::{Transaction, make_coinbase_txn, UTXOPool};
+use super::{transaction::{Transaction, make_coinbase_txn, UTXOPool, build_utxos_from_confirmed}, block_verify::verify_block, state::State, txn_verify::check_pending_and_orphans};
 
 /// Max size of a block in bytes
 pub const MAX_BLOCK_SIZE: usize = 16384;
+
+lazy_static!{
+    pub static ref BLOCK_TIMESTAMP_TOLERANCE: Duration = Duration::hours(2);
+}
 
 pub type BlockNonce = [u8; 32];
 
@@ -17,7 +24,6 @@ pub type BlockNonce = [u8; 32];
 pub struct Block {
     pub header: BlockHeader,
     pub transactions: Vec<Transaction>,
-    pub difficulty_bits: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -88,6 +94,31 @@ impl Block {
     pub fn get_txn(&self, hash: Hash256) -> Option<Transaction> {
         self.transactions.iter().find(|t| t.hash == hash).cloned()
     }
+
+    pub fn size(&self) -> usize {
+        self.header.size() +
+        self.transactions
+            .iter()
+            .fold(0, |a, e| a + e.size())
+    }
+
+    /// Gets all transactions in the block, consuming the block in the
+    /// process.
+    pub fn to_txns(self) -> Vec<Transaction> {
+        return self.transactions;
+    }
+}
+
+impl BlockHeader {
+    pub fn size(&self) -> usize {
+        size_of_val(&self.version) +
+        size_of_val(&self.prev_hash) +
+        size_of_val(&self.merkle_root) +
+        size_of_val(&self.timestamp) +
+        size_of_val(&self.difficulty_target) +
+        size_of_val(&self.nonce) +
+        size_of_val(&self.hash)
+    }
 }
 
 impl BlockchainDB {
@@ -156,8 +187,9 @@ impl BlockchainDB {
 
     /// Returns the block, the chain index, and the block's position in the chain.
     /// Returns none if the block does not exist anywhere in the blockchain.
+    /// Searches the blockchain in reverse because we're usually going to be looking for recent blocks.
     pub fn get_block<'a>(&'a self, hash: Hash256) -> Option<(&'a Block, usize, usize)> {
-        for i in 0..self.blocks.len() {
+        for i in (0..self.blocks.len()).rev() {
             let block = &self.blocks[i];
             if block.header.hash == hash {
                 return Some((block, 0, i));
@@ -167,7 +199,29 @@ impl BlockchainDB {
         for i in 0..self.forks.len() {
             let blocks = &self.forks[i].blocks;
 
-            for j in 0..blocks.len() {
+            for j in (0..blocks.len()).rev() {
+                let block = &blocks[j];
+                if block.header.hash == hash {
+                    return Some((block, i + 1, j));
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn get_block_mut<'a>(&'a mut self, hash: Hash256) -> Option<(&'a Block, usize, usize)> {
+        for i in (0..self.blocks.len()).rev() {
+            let block = &self.blocks[i];
+            if block.header.hash == hash {
+                return Some((block, 0, i));
+            }
+        }
+
+        for i in 0..self.forks.len() {
+            let blocks = &self.forks[i].blocks;
+
+            for j in (0..blocks.len()).rev() {
                 let block = &blocks[j];
                 if block.header.hash == hash {
                     return Some((block, i + 1, j));
@@ -183,6 +237,9 @@ impl BlockchainDB {
     /// 
     /// If the chain index is nonzero, positions are still interpreted as starting from the genesis
     /// block. The blocks returned may consist of some in the main chain and some in the fork.
+    /// The `end_pos` here is the absolute position from the genesis block, NOT the position in the chain.
+    /// See [get_blocks_rel<'a>()] for a version of this method that interprets `end_pos` as a relative position
+    /// indicating the block's height in the fork.
     pub fn get_blocks(&self, chain: usize, start_pos: usize, end_pos: usize) -> Vec<Block> {
         if chain == 0 {
             return self.blocks[start_pos..end_pos].to_vec();
@@ -217,6 +274,33 @@ impl BlockchainDB {
         out
     }
 
+    /// This is used to rebuild the entire UTXO database when verifying new blocks, which is a waste of space
+    /// and memory. If we're going to be rebuilding the database it would be more prudent to pass around indices into
+    /// the blockchain, instead of copies of it.
+    pub fn get_blocks_rel(&self, chain: usize, start_pos: usize, end_pos: usize) -> Vec<Block> {
+        let mut out: Vec<Block> = vec![];
+
+        if chain == 0 {
+            for block in &self.blocks[start_pos..end_pos] {
+                out.push(block.clone());
+            }
+
+            return out;
+        }
+
+        let chain = &self.forks[chain];
+
+        for block in &self.blocks[start_pos..(chain.prev_index + 1)] {
+            out.push(block.clone());
+        }
+
+        for block in &chain.blocks[0..end_pos] {
+            out.push(block.clone());
+        }
+
+        out
+    }
+
     /// Finds the given transaction in the entire blockchain. Returns the block containing the
     /// transaction, the chain index of the block, and the transaction if found.
     pub fn find_txn<'a>(&'a self, hash: Hash256) -> Option<(&'a Block, usize, Transaction)> {
@@ -244,13 +328,150 @@ impl BlockchainDB {
 
         None
     }
+
+    pub fn current_difficulty(&self) -> Hash256 {
+        self.blocks.last().unwrap().header.difficulty_target
+    }
+
+    pub fn add_block(&mut self, block: Block) {
+        let (_, chain, pos) = self.get_block(block.header.prev_hash).unwrap();
+        let top = match chain {
+            0 => self.blocks.last().unwrap(),
+            i => self.forks[i - 1].blocks.last().unwrap()
+        };
+
+        // Best condition, we don't need to create a new fork
+        if top.header.hash == block.header.prev_hash {
+            match chain {
+                0 => self.blocks.push(block),
+                i => self.forks[i - 1].blocks.push(block)
+            };
+            return;
+        }
+
+        // TODO: Support this?
+        // It's so rare that it might not even be worth supporting - it's a lot
+        // of extra logic. If it does happen it will definitely cause weird bugs
+        // but it might not be worth it given how rarely such a bug would occur.
+        if chain != 0 {
+            println!("We have encoutered a fork of a fork");
+            return;
+        }
+
+        self.forks.push(ForkChain {
+            prev_index: pos,
+            blocks: vec![block],
+        });
+    }
+
+    fn resolve_forks(&mut self) -> Vec<Block> {
+        if self.forks.len() == 0 {
+            return vec![];
+        }
+
+        // First figure out the best chain
+        let (_, chain_idx, is_dup) = self.best_chain();
+
+        // We can't resolve forks if we have two equally valid chains
+        if is_dup {
+            return vec![];
+        }
+
+        let mut out: Vec<Block> = vec![];
+
+        // If the best chain is the main one, then just delete the forks. We need
+        // to keep the blocks so that the transactions within them can be added to the pending pool
+        if chain_idx == 0 {
+            for fork in &self.forks {
+                for block in &fork.blocks {
+                    out.push(block.clone());
+                }
+            }
+        } else {
+            let winning_fork = &self.forks[chain_idx - 1];
+
+            // Remove the extra blocks on the main chain
+            for i in (winning_fork.prev_index + 1)..self.blocks.len() {
+                out.push(self.blocks.remove(i));
+            }
+
+            // Remove the blocks in other forks
+            for i in (0..self.forks.len()).filter(|i| *i != (chain_idx - 1)) {
+                let fork = &self.forks[i];
+
+                for block in &fork.blocks {
+                    out.push(block.clone());
+                }
+            }
+
+            // Move the fork blocks to the main chain
+            let new_top_blocks = &winning_fork.blocks;
+            for block in new_top_blocks {
+                self.blocks.push(block.clone());
+            }
+        }
+
+        self.forks = vec![];
+
+        out
+    }
+}
+
+pub fn check_orphans(state: &mut State) {
+    let mut orphans_to_remove: Vec<usize> = vec![];
+
+    for i in 0..state.blockchain.orphans.len() {
+        let block = &state.blockchain.orphans[i];
+        let verify_result = verify_block(block.clone(), state);
+
+        match verify_result {
+            // Block is no longer an orphan!
+            Ok(false) => {
+                orphans_to_remove.push(i);
+            },
+            Err(err) => {
+                println!("Error verifying orphan block: {}", err.to_string());
+                orphans_to_remove.push(i);
+            },
+            // Block is still an orphan
+            Ok(true) => ()
+        };
+    }
+
+    for pos in orphans_to_remove {
+        state.blockchain.orphans.remove(pos);
+    }
+}
+
+/// Tries to resolve any forks in the blockchain. If there is a unique best chain,
+/// this function will get any blocks that need to be removed from the blockchain,
+/// and it will add their transactions back to the pending/orphan pools as well as
+/// update the UTXO database accordingly.
+pub fn resolve_forks(state: &mut State) {
+    let mut fork_blocks = state.blockchain.resolve_forks();
+
+    if fork_blocks.len() == 0 {
+        return;
+    }
+
+    let mut txns: Vec<Transaction> = vec![];
+
+    for block in fork_blocks.drain(0..) {
+        txns.append(&mut block.to_txns());
+    }
+
+    state.pending_txns.append(&mut txns);
+
+    // Reset the UTXO database, then check all pending and orphan transactions.
+    // We need to maintain the invariant that every pending or orphan transaction is valid
+    // and is accounted for by the UTXO pool.
+    state.blockchain.utxo_pool = build_utxos_from_confirmed(&state.blockchain.blocks);
+    check_pending_and_orphans(state);
 }
 
 pub fn genesis_block() -> Block {
     let genesis_miner = b58c_to_address(String::from("2LuJkN1xDRRM2R2h2H4qnSspy4qmwoZfor")).expect("Failed to create genesis block");
     let coinbase = make_coinbase_txn(&genesis_miner, String::from("genesis block"), 0);
-    let difficulty_bits: u32 = 0x1cf0_0000;
-    // The difficulty "1cf00000" will produce the target hash here. You can verify this by running `get-target`.
     let target_bytes = hex::decode("00000000f0000000000000000000000000000000000000000000000000000000").unwrap();
     let mut target = [0 as u8; 32];
     target.copy_from_slice(&target_bytes);
@@ -279,6 +500,18 @@ pub fn genesis_block() -> Block {
     Block {
         header,
         transactions: vec![coinbase],
-        difficulty_bits
     }
+}
+
+pub fn hash_block_header(header: &RawBlockHeader) -> Hash256 {
+    let bytes = bincode::serialize(header).unwrap();
+    let mut context = Context::new(&SHA256);
+    context.update(&bytes);
+    let digest = context.finish();
+    let hash = digest.as_ref();
+
+    let mut out = [0 as u8; 32];
+    out.copy_from_slice(hash);
+
+    out
 }

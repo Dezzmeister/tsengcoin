@@ -19,12 +19,13 @@ pub struct State {
     pub blockchain: BlockchainDB,
     pub pending_txns: Vec<Transaction>,
     /// Valid transactions that reference a parent that does not exist.
-    pub orphan_txns: Vec<Transaction>
+    pub orphan_txns: Vec<Transaction>,
 }
 
 impl State {
     pub fn new(addr_me: SocketAddr, keypair: EcdsaKeyPair) -> Self {
         let address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
+        let blockchain = load_blockchain_db();
 
         Self {
             local_addr_me: addr_me,
@@ -35,7 +36,7 @@ impl State {
             },
             keypair,
             address,
-            blockchain: load_blockchain_db(),
+            blockchain,
             pending_txns: vec![],
             orphan_txns: vec![]
         }

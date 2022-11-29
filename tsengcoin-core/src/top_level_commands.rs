@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use ring::signature::KeyPair;
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections}, session_commands::listen_for_commands, difficulty::get_difficulty_target};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections}, session_commands::listen_for_commands};
 
 fn run_script(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let script = invocation.get_field("script").unwrap();
@@ -157,23 +157,6 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     Ok(())
 }
 
-fn get_target(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
-    let bits_str = invocation.get_field("difficulty-bits").unwrap();
-    let bytes = hex::decode(bits_str)?;
-    let bits: u32 = 
-        ((bytes[0] as u32) << 24) |
-        ((bytes[1] as u32) << 16) |
-        ((bytes[2] as u32) << 8) |
-        (bytes[3] as u32);
-
-    let target = get_difficulty_target(bits);
-    let encoded = hex::encode(target);
-
-    println!("{}", encoded);
-
-    Ok(())
-}
-
 pub fn make_command_map() -> CommandMap<()> {
     let mut out: CommandMap<()> = HashMap::new();
     let run_script_cmd: Command<()> = Command {
@@ -310,18 +293,6 @@ pub fn make_command_map() -> CommandMap<()> {
         flags: vec![],
         desc: String::from("Start as a full node without bootstrapping. The node will not attempt to connect to any network, and it will use whatever blockchain data it has locally.")
     };
-    let get_target_cmd: Command<()> = Command {
-        processor: get_target,
-        expected_fields: vec![
-            Field::new(
-                "difficulty-bits",
-                FieldType::Pos(0),
-                "4-byte unsigned difficulty bits. The first 8 bits is the exponent, and the next 24 bits is the mantissa"
-            )
-        ],
-        flags: vec![],
-            desc: String::from("Calculate the target hash given the difficulty")
-    };
 
     out.insert(String::from("run-script"), run_script_cmd);
     out.insert(String::from("random-test-address-hex"), random_test_address_hex_cmd);
@@ -331,7 +302,6 @@ pub fn make_command_map() -> CommandMap<()> {
     out.insert(String::from("test-load-keypair"), test_load_keypair_cmd);
     out.insert(String::from("connect"), connect_cmd);
     out.insert(String::from("start-seed"), start_seed_cmd);
-    out.insert(String::from("get-target"), get_target_cmd);
 
     out
 }

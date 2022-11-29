@@ -9,9 +9,9 @@ use crate::wallet::Hash256;
 use super::block::MAX_BLOCK_SIZE;
 use super::transaction::{MAX_TXN_AMOUNT, MIN_TXN_FEE};
 
-pub type VerifyResult<T> = std::result::Result<T, VerifyError>;
+pub type TxnVerifyResult<T> = std::result::Result<T, TxnVerifyError>;
 
-pub type VerifyError = Box<ErrorKind>;
+pub type TxnVerifyError = Box<ErrorKind>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ErrorKind {

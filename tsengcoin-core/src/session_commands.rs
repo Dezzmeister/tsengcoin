@@ -6,7 +6,7 @@ use ring::signature::KeyPair;
 use crate::v1::request::send_new_txn;
 use crate::v1::{VERSION};
 use crate::v1::transaction::{p2pkh_utxos_for_addr, make_p2pkh_lock, collect_enough_change, TxnOutput, UnsignedTransaction, sign_txn, make_p2pkh_unlock, TxnInput, UnhashedTransaction, hash_txn};
-use crate::v1::verify::verify_transaction;
+use crate::v1::txn_verify::verify_transaction;
 use crate::wallet::b58c_to_address;
 use crate::{command::{dispatch_command, CommandInvocation, Command, FieldType, Field, Flag}, v1::{state::State}};
 

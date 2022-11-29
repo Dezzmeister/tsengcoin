@@ -1,23 +1,32 @@
 use num_bigint::BigUint;
-use num_traits::One;
 
-use crate::wallet::Hash256;
+use crate::{wallet::Hash256, v1::block::Block};
 
-type Minute = usize;
+type Second = usize;
 
 /// TODO: Difficulty retargeting
-/// How often a block should be found
-pub const TARGET_BLOCK_INTERVAL: Minute = 4;
+/// How often a block should be found (5 minutes)
+pub const TARGET_BLOCK_INTERVAL: Second = 300;
 /// After how many blocks should the difficulty be recalculated
 pub const NUM_BLOCKS_RETARGET: usize = 100;
 
-pub fn get_difficulty_target(difficulty_bits: u32) -> Hash256 {
-    let raw_exp = (difficulty_bits >> 24) as u8;
-    let coeff = difficulty_bits & 0x00FF_FFFF;
-    let exp = 8 * (raw_exp - 3);
+pub const RETARGET_INTERVAL: usize = NUM_BLOCKS_RETARGET * TARGET_BLOCK_INTERVAL;
 
-    let target_int = (BigUint::one() << exp) * coeff;
-    let bytes = target_int.to_bytes_be();
+pub fn retarget_difficulty(old: Hash256, last_block: &Block, first_block: &Block) -> Hash256 {
+    let time_interval = last_block.header.timestamp - first_block.header.timestamp;
+    let secs = time_interval.num_seconds() as usize;
+    let mut adjustment = secs / RETARGET_INTERVAL;
+
+    // Clamp the adjustment if it is too big or too small, like Bitcoin does. We do this
+    // to prevent massive fluctuations in the difficulty of the network.
+    if adjustment < (RETARGET_INTERVAL / 4) {
+        adjustment = RETARGET_INTERVAL / 4;
+    } else if adjustment > (RETARGET_INTERVAL * 4) {
+        adjustment = RETARGET_INTERVAL * 4;
+    }
+
+    let new_hash_uint = BigUint::from_bytes_be(&old) * adjustment;
+    let bytes = new_hash_uint.to_bytes_be();
     let mut out = [0 as u8; 32];
 
     out[(32 - bytes.len())..].copy_from_slice(&bytes);

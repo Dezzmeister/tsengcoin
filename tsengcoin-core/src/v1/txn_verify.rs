@@ -2,26 +2,29 @@ use num_bigint::BigUint;
 
 use crate::tsengscript_interpreter::{Token, execute};
 
-use super::{verify_error::{VerifyResult}, transaction::{Transaction, MAX_TXN_AMOUNT, UnsignedTransaction, MIN_TXN_FEE, UnhashedTransaction, hash_txn}, block::MAX_BLOCK_SIZE, state::State};
-use super::verify_error::ErrorKind::EmptyInputs;
-use super::verify_error::ErrorKind::EmptyOutputs;
-use super::verify_error::ErrorKind::TooLarge;
-use super::verify_error::ErrorKind::OutOfRange;
-use super::verify_error::ErrorKind::Coinbase;
-use super::verify_error::ErrorKind::InvalidUTXOIndex;
-use super::verify_error::ErrorKind::Script;
-use super::verify_error::ErrorKind::BadUnlockScript;
-use super::verify_error::ErrorKind::Overspend;
-use super::verify_error::ErrorKind::LowFee;
-use super::verify_error::ErrorKind::DoubleSpend;
-use super::verify_error::ErrorKind::InvalidHash;
-use super::verify_error::ErrorKind::ZeroOutput;
+use super::{txn_verify_error::{TxnVerifyResult}, transaction::{Transaction, MAX_TXN_AMOUNT, UnsignedTransaction, MIN_TXN_FEE, UnhashedTransaction, hash_txn}, block::MAX_BLOCK_SIZE, state::State};
+use super::txn_verify_error::ErrorKind::EmptyInputs;
+use super::txn_verify_error::ErrorKind::EmptyOutputs;
+use super::txn_verify_error::ErrorKind::TooLarge;
+use super::txn_verify_error::ErrorKind::OutOfRange;
+use super::txn_verify_error::ErrorKind::Coinbase;
+use super::txn_verify_error::ErrorKind::InvalidUTXOIndex;
+use super::txn_verify_error::ErrorKind::Script;
+use super::txn_verify_error::ErrorKind::BadUnlockScript;
+use super::txn_verify_error::ErrorKind::Overspend;
+use super::txn_verify_error::ErrorKind::LowFee;
+use super::txn_verify_error::ErrorKind::DoubleSpend;
+use super::txn_verify_error::ErrorKind::InvalidHash;
+use super::txn_verify_error::ErrorKind::ZeroOutput;
 
 /// Verifies the transaction according to an independent set of rules. If there are no errors,
-/// returns 'true' if the transaction is an orphan, and false if not. If the transaction is an orphan,
+/// returns 'true' if the transaction is an orphan, and false if not. If the transaction is not an orphan,
 /// it should be added to the pending transactions pool. This function does not mutate the state in any way
 /// so adding valid transactions to their respective pools is the caller's responsibility.
-pub fn verify_transaction(tx: Transaction, state: &State) -> VerifyResult<bool> {
+/// 
+/// This function may also be used to to verify transactions within new blocks. Again, it is the caller's
+/// responsibility to update the blockchain and the UTXO database accordingly.
+pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<bool> {
     let utxos = &state.blockchain.utxo_pool;
 
     // Transaction must have at least 1 input
@@ -195,4 +198,28 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> VerifyResult<bool> 
     }
 
     Ok(false)
+}
+
+pub fn check_pending_and_orphans(state: &mut State) {
+    let mut new_pending: Vec<Transaction> = vec![];
+    let mut new_orphans: Vec<Transaction> = vec![];
+
+    for txn in state.pending_txns.iter().chain(state.orphan_txns.iter()) {
+        let verify_result = verify_transaction(txn.clone(), state);
+        match verify_result {
+            Ok(true) => {
+                new_orphans.push(txn.clone());
+            },
+            Err(err) => {
+                println!("Pending/orphan transaction rejected due to error: {}", err.to_string());
+            },
+            Ok(false) => {
+                state.blockchain.utxo_pool.update_unconfirmed(txn);
+                new_pending.push(txn.clone());
+            }
+        }
+    }
+
+    state.pending_txns = new_pending;
+    state.orphan_txns = new_orphans;
 }

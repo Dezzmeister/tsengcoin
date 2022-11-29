@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::wallet::Hash256;
 
-use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::Block, transaction::Transaction, verify::verify_transaction};
+use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block, resolve_forks}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
@@ -37,7 +37,8 @@ pub fn handle_request(req: Request, socket: &TcpStream, state_mut: &Mutex<State>
         Request::GetAddr(data) => handle_get_addr(data, socket, state_mut),
         Request::Advertise(data) => handle_advertise(data, socket, state_mut),
         Request::GetBlocks(data) => handle_get_blocks(data, socket, state_mut),
-        Request::NewTxn(data) => handle_new_txn(data, socket, state_mut)
+        Request::NewTxn(data) => handle_new_txn(data, socket, state_mut),
+        Request::NewBlock(data) => handle_new_block(data, socket, state_mut)
     }
 }
 
@@ -195,6 +196,32 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, state_mut: &Mutex<
     };
 
     state.network.broadcast_msg(&Request::NewTxn(data));
+
+    Ok(())
+}
+
+pub fn handle_new_block(data: Block, _socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+    let mut guard = state_mut.lock().unwrap();
+    let state = &mut *guard;
+
+    let block_hash = data.header.hash;
+    let verify_result = verify_block(data.clone(), state);
+
+    match verify_result {
+        Err(err) => {
+            println!("Error verifying block: {}", err.to_string());
+            return Ok(());
+        },
+        Ok(true) => {
+            println!("Received new orphan block: {}", hex::encode(&block_hash));
+        },
+        Ok(false) => {
+            println!("Received new block: {}", hex::encode(&block_hash));
+        }
+    };
+
+    resolve_forks(state);
+    
 
     Ok(())
 }

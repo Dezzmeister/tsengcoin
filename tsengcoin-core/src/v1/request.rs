@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::{v1::net::DistantNode, wallet::Hash256};
 
-use super::{net::{PROTOCOL_VERSION, Node}, response::{Response}, state::State, transaction::Transaction};
+use super::{net::{PROTOCOL_VERSION, Node}, response::{Response}, state::State, transaction::Transaction, block::Block};
 use super::response::GetBlocksRes::UnknownHash;
 use super::response::GetBlocksRes::DisconnectedChains;
 use super::response::GetBlocksRes::BadChainIndex;
@@ -20,7 +20,8 @@ pub enum Request {
     GetAddr(GetAddrReq),
     Advertise(AdvertiseReq),
     GetBlocks(GetBlocksReq),
-    NewTxn(Transaction)
+    NewTxn(Transaction),
+    NewBlock(Block)
 }
 
 #[derive(Serialize, Deserialize, Debug)]

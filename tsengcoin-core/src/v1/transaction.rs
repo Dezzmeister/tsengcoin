@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 
 use crate::wallet::{Hash256, Address};
 
-use super::{VERSION, state::State};
+use super::{VERSION, state::State, block::Block};
 
 pub const BLOCK_REWARD: u64 = 1000;
 pub const MAX_META_LENGTH: usize = 256;
@@ -167,6 +167,10 @@ impl UTXOPool {
             let output_pos = utxo.outputs.iter().position(|i| *i == input.output_idx).unwrap();
 
             utxo.outputs.remove(output_pos);
+
+            if utxo.outputs.len() == 0 {
+                self.utxos.remove(utxo_pos);
+            }
         }
 
         let txn_idx = TransactionIndex {
@@ -176,6 +180,72 @@ impl UTXOPool {
         };
 
         self.utxos.push(txn_idx);
+    }
+
+    pub fn update_confirmed(&mut self, tx: &Transaction, block: &Hash256) {
+        for input in &tx.inputs {
+            let utxo_pos = self.utxos.iter().position(|u| u.txn == input.txn_hash).unwrap();
+            let utxo = &mut self.utxos[utxo_pos];
+            let output_pos = utxo.outputs.iter().position(|i| *i == input.output_idx).unwrap();
+
+            utxo.outputs.remove(output_pos);
+
+            if utxo.outputs.len() == 0 {
+                self.utxos.remove(utxo_pos);
+            }
+        }
+
+        let txn_idx = TransactionIndex {
+            block: Some(*block),
+            txn: tx.hash,
+            outputs: (0..tx.outputs.len()).collect::<Vec<usize>>(),
+        };
+
+        self.utxos.push(txn_idx);
+    }
+
+    pub fn remove_unwound_blocks(&mut self, block_hashes: Vec<Hash256>) {
+        let new_utxos =
+            self.utxos
+                .iter()
+                .filter(|u| {
+                    match u.block {
+                        Some(hash) => !block_hashes.contains(&hash),
+                        None => true
+                    }
+                })
+                .map(|t| t.to_owned())
+                .collect::<Vec<TransactionIndex>>();
+        
+        self.utxos = new_utxos;
+    }
+
+    /// Unwinds the UTXO database to match the state of UTXOs at the current block. Returns
+    /// all UTXOs that were removed from the database.
+    /// 
+    /// This is essential for verifying new blocks! If a block is verified and added
+    /// to the blockchain, the removed transactions may need to be verified again
+    /// to prevent things like double-spend.
+    pub fn unwind_utxos(&mut self) -> Vec<TransactionIndex> {
+        let mut out: Vec<TransactionIndex> = vec![];
+        let mut remove_poses: Vec<usize> = vec![];
+
+        for i in (0..self.utxos.len()).rev() {
+            let utxo = self.utxos[i].clone();
+            
+            // Any UTXO in a block has already been validated and accepted.
+            // Any UTXO not in a block needs to be removed and added to the out vector
+            if utxo.block.is_none() {
+                out.push(utxo);
+                remove_poses.push(i);
+            }
+        }
+
+        for pos in remove_poses {
+            self.utxos.remove(pos);
+        }
+
+        out
     }
 }
 
@@ -428,4 +498,32 @@ pub fn hash_txn(txn: &UnhashedTransaction) -> Result<Hash256, Box<dyn Error>> {
     out.copy_from_slice(hash);
 
     Ok(out)
+}
+
+/// Rebuild the entire UTXO pool from the blocks given. Assumes that the first
+/// block is the genesis block containing only one transaction.
+/// 
+/// This can be improved but for now it's conceptually simple and it does the job.
+/// If the blockchain were to grow though we wouldn't want to be rebuilding the entire
+/// UTXO pool from the first block every time we try to add a new block. We would need
+/// a better data structure that allows us to undo the latest changes to the UTXO pool.
+pub fn build_utxos_from_confirmed(blocks: &Vec<Block>) -> UTXOPool {
+    let mut pool = UTXOPool {
+        last_hash: blocks[0].header.hash,
+        utxos: vec![
+            TransactionIndex {
+                block: Some(blocks[0].header.hash),
+                txn: blocks[0].transactions[0].hash,
+                outputs: vec![0]
+            }
+        ],
+    };
+
+    for block in &blocks[1..] {
+        for txn in &block.transactions {
+            pool.update_confirmed(txn, &block.header.hash);
+        }
+    }
+
+    pool
 }
