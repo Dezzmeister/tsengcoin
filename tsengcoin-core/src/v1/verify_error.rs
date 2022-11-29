@@ -26,7 +26,8 @@ pub enum ErrorKind {
     Overspend(u64, u64),
     LowFee(u64),
     DoubleSpend(Hash256, usize),
-    InvalidHash
+    InvalidHash,
+    ZeroOutput
 }
 
 impl StdError for ErrorKind {
@@ -43,7 +44,8 @@ impl StdError for ErrorKind {
             ErrorKind::Overspend(_, _) => "Tried to spend more than total amount in inputs",
             ErrorKind::LowFee(_) => "Transaction fee is too low",
             ErrorKind::DoubleSpend(_, _) => "Transaction output has already been spent",
-            ErrorKind::InvalidHash => "Transaction hash is invalid"
+            ErrorKind::InvalidHash => "Transaction hash is invalid",
+            ErrorKind::ZeroOutput => "Transaction has at least one output with zero TsengCoin"
         }
     }
 
@@ -66,7 +68,8 @@ impl fmt::Display for ErrorKind {
             ErrorKind::Overspend(input_amt, output_amt) => write!(fmt, "{}: tried to spend {} when only {} provided as input", self.to_string(), output_amt, input_amt),
             ErrorKind::LowFee(fee) => write!(fmt, "{}: Tried to spend fee of {}, minimum fee is {}", self.to_string(), fee, MIN_TXN_FEE),
             ErrorKind::DoubleSpend(hash, output_idx) => write!(fmt, "{}: hash: {}, output index: {}", self.to_string(), hex::encode(hash), output_idx),
-            ErrorKind::InvalidHash => write!(fmt, "{}", self.to_string())
+            ErrorKind::InvalidHash => write!(fmt, "{}", self.to_string()),
+            ErrorKind::ZeroOutput => write!(fmt, "{}", self.to_string())
         }
     }
 }

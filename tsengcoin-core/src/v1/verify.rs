@@ -15,6 +15,7 @@ use super::verify_error::ErrorKind::Overspend;
 use super::verify_error::ErrorKind::LowFee;
 use super::verify_error::ErrorKind::DoubleSpend;
 use super::verify_error::ErrorKind::InvalidHash;
+use super::verify_error::ErrorKind::ZeroOutput;
 
 /// Verifies the transaction according to an independent set of rules. If there are no errors,
 /// returns 'true' if the transaction is an orphan, and false if not. If the transaction is an orphan,
@@ -43,6 +44,13 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> VerifyResult<bool> 
     // Total output must be less than the max value
     if output_sum > MAX_TXN_AMOUNT {
         return Err(Box::new(OutOfRange(output_sum)));
+    }
+
+    // Transaction outputs must be nonzero
+    for output in &tx.outputs {
+        if output.amount == 0 {
+            return Err(Box::new(ZeroOutput));
+        }
     }
 
     let zero_hash = tx.inputs.iter().find(|i| i.txn_hash == [0; 32]);
