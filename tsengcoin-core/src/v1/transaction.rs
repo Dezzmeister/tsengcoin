@@ -74,13 +74,12 @@ pub struct Script {
 /// Pool of unspent transaction outputs (UTXOs). UTXOs are updated whenever a new transaction is validated
 /// or when a new block is accepted. UTXOs are also updated when the blockchain is unwound and previously
 /// validated transactions are put back into the pending transaction pool.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct UTXOPool {
-    pub last_hash: Hash256,
     pub utxos: Vec<TransactionIndex>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct TransactionIndex {
     /// The block containing the transaction with unspent output. Will be None if
     /// the unspent output is in the pending transactions pool
@@ -325,6 +324,31 @@ impl std::fmt::Debug for TxnInput {
     }
 }
 
+impl std::fmt::Debug for TransactionIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TransactionIndex")
+            .field("block", &hex_option(self.block))
+            .field("txn", &hex::encode(&self.txn))
+            .field("outputs", &self.outputs)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for UTXOPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UTXOPool")
+            .field("utxos", &self.utxos)
+            .finish()
+    }
+}
+
+fn hex_option(opt: Option<Hash256>) -> Option<String> {
+    match opt {
+        None => None,
+        Some(data) => Some(hex::encode(&data))
+    }
+}
+
 /// The coinbase transaction is the transaction in which a miner receives a block reward. The output amount
 /// is the block reward plus the transaction fees.
 pub fn make_coinbase_txn(winner: &Address, meta: String, fees: u64) -> Transaction {
@@ -509,7 +533,6 @@ pub fn hash_txn(txn: &UnhashedTransaction) -> Result<Hash256, Box<dyn Error>> {
 /// a better data structure that allows us to undo the latest changes to the UTXO pool.
 pub fn build_utxos_from_confirmed(blocks: &Vec<Block>) -> UTXOPool {
     let mut pool = UTXOPool {
-        last_hash: blocks[0].header.hash,
         utxos: vec![
             TransactionIndex {
                 block: Some(blocks[0].header.hash),

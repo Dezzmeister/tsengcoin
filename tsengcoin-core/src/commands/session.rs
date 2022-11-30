@@ -10,6 +10,9 @@ use crate::v1::txn_verify::verify_transaction;
 use crate::wallet::b58c_to_address;
 use crate::{command::{dispatch_command, CommandInvocation, Command, FieldType, Field, Flag}, v1::{state::State}};
 
+#[cfg(feature = "debug")]
+use super::debug::make_command_map;
+
 fn getpeerinfo(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
@@ -255,6 +258,15 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
     command_map.insert(String::from("blockchain-stats"), blockchain_stats_cmd);
     command_map.insert(String::from("balance-p2pkh"), balance_p2pkh_cmd);
     command_map.insert(String::from("send-coins-p2pkh"), send_coins_p2pkh_cmd);
+
+    // Include debug commands if the feature is enabled
+    #[cfg(feature = "debug")]
+    {
+        let dbg_cmds = make_command_map();
+        for (key, val) in dbg_cmds.into_iter() {
+            command_map.insert(key, val);
+        }
+    }
 
     let mut buffer = String::new();
     let stdin = std::io::stdin();

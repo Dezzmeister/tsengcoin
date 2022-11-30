@@ -1,18 +1,17 @@
 #![feature(thread_is_running)]
 pub mod v1;
+pub mod commands;
 
 pub mod command;
 pub mod wallet;
 pub mod tsengscript_interpreter;
 pub mod script_error;
-pub mod top_level_commands;
-pub mod session_commands;
 pub mod difficulty;
 
 use std::{error::Error, env};
 
 use command::{dispatch_command};
-use top_level_commands::make_command_map;
+use commands::top_level::make_command_map;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let command_map = make_command_map();

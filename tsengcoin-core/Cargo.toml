@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 cuda_miner = ["cust", "cuda_builder", "nvvm", "rustc_codegen_nvvm"]
+debug = []
 
 [dependencies]
 rand = "0.8.5"

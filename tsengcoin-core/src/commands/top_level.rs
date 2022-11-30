@@ -3,7 +3,8 @@ use std::sync::Mutex;
 
 use ring::signature::KeyPair;
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections}, session_commands::listen_for_commands};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections}};
+use super::session::listen_for_commands;
 
 fn run_script(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let script = invocation.get_field("script").unwrap();

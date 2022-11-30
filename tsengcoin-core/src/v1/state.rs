@@ -96,7 +96,6 @@ pub fn load_blockchain_db() -> BlockchainDB {
         forks: vec![],
         orphans: vec![],
         utxo_pool: UTXOPool {
-            last_hash: block_hash,
             utxos: vec![
                 TransactionIndex {
                     block: Some(block_hash),

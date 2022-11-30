@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 
-use crate::{v1::net::DistantNode, wallet::Hash256};
+use crate::{v1::{net::DistantNode, block_verify::verify_block}, wallet::Hash256};
 
 use super::{net::{PROTOCOL_VERSION, Node}, response::{Response}, state::State, transaction::Transaction, block::Block};
 use super::response::GetBlocksRes::UnknownHash;
@@ -180,10 +180,26 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
         match res {
             Response::GetBlocks(res_data) => {
                 match res_data {
-                    Blocks(mut blocks) => {
+                    Blocks(blocks) => {
                         if blocks[0].header.prev_hash == hash {
-                            // TODO VERIFY
-                            state.blockchain.blocks.append(&mut blocks);
+                            for block in blocks {
+                                let verify_result = verify_block(block.clone(), state);
+
+                                match verify_result {
+                                    Ok(false) => {
+                                        state.blockchain.blocks.push(block);
+                                    },
+                                    Err(err) => {
+                                        println!("Received a bad block: {}", err.to_string());
+                                    },
+                                    Ok(true) => {
+                                        println!("Received an orphan block as part of a blockchain from another peer");
+                                        // TODO: Remove peer for this nonsense. This really is nonsense because we checked earlier that
+                                        // this chain of blocks is connected to the top of our main chain, so it would be the peer's
+                                        // fault for inserting a disconnected block into the blocks it sends back.
+                                    }
+                                }
+                            }
                         } else {
                             return Err("Received block with bad prev hash")?;
                         }
