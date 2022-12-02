@@ -111,7 +111,6 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
             Some((nonce, hash)) => {
                 let state = &mut state_mut.lock().unwrap();
                 println!("Confirmed new block: {}", hex::encode(&hash));
-                println!("NONCE: {}", hex::encode(&nonce));
                 let new_block = Block {
                     header: BlockHeader {
                         version: raw_block.header.version,
