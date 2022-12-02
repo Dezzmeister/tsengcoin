@@ -7,6 +7,7 @@ pub mod wallet;
 pub mod tsengscript_interpreter;
 pub mod script_error;
 pub mod difficulty;
+pub mod hash;
 
 use std::{error::Error, env};
 

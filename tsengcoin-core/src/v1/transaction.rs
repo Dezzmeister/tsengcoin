@@ -15,6 +15,8 @@ pub const MAX_TXN_AMOUNT: u64 = 1_000_000_000;
 /// Every transaction must give up at least 1 TsengCoin as a tx fee
 pub const MIN_TXN_FEE: u64 = 1;
 
+pub const COINBASE_OUTPUT_IDX: usize = 0xFFFF_FFFF;
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Transaction {
     /// Protocol version
@@ -160,6 +162,17 @@ impl UTXOPool {
     /// for the outputs of this transaction.
     /// Assumes that this is a valid transaction and all UTXOS are already in the pool.
     pub fn update_unconfirmed(&mut self, tx: &Transaction) {
+        // Handle coinbase transactions separately
+        if tx.inputs.len() == 1 && tx.inputs[0].output_idx == COINBASE_OUTPUT_IDX {
+            let txn_idx = TransactionIndex {
+                block: None,
+                txn: tx.hash,
+                outputs: vec![0]
+            };
+
+            self.utxos.push(txn_idx);
+            return;
+        }
         for input in &tx.inputs {
             let utxo_pos = self.utxos.iter().position(|u| u.txn == input.txn_hash).unwrap();
             let utxo = &mut self.utxos[utxo_pos];
@@ -182,6 +195,17 @@ impl UTXOPool {
     }
 
     pub fn update_confirmed(&mut self, tx: &Transaction, block: &Hash256) {
+        if tx.inputs.len() == 1 && tx.inputs[0].output_idx == COINBASE_OUTPUT_IDX {
+            let txn_idx = TransactionIndex {
+                block: Some(*block),
+                txn: tx.hash,
+                outputs: vec![0]
+            };
+
+            self.utxos.push(txn_idx);
+            return;
+        }
+
         for input in &tx.inputs {
             let utxo_pos = self.utxos.iter().position(|u| u.txn == input.txn_hash).unwrap();
             let utxo = &mut self.utxos[utxo_pos];
@@ -203,48 +227,16 @@ impl UTXOPool {
         self.utxos.push(txn_idx);
     }
 
-    pub fn remove_unwound_blocks(&mut self, block_hashes: Vec<Hash256>) {
-        let new_utxos =
-            self.utxos
-                .iter()
-                .filter(|u| {
-                    match u.block {
-                        Some(hash) => !block_hashes.contains(&hash),
-                        None => true
-                    }
-                })
-                .map(|t| t.to_owned())
-                .collect::<Vec<TransactionIndex>>();
-        
-        self.utxos = new_utxos;
-    }
-
-    /// Unwinds the UTXO database to match the state of UTXOs at the current block. Returns
-    /// all UTXOs that were removed from the database.
-    /// 
-    /// This is essential for verifying new blocks! If a block is verified and added
-    /// to the blockchain, the removed transactions may need to be verified again
-    /// to prevent things like double-spend.
-    pub fn unwind_utxos(&mut self) -> Vec<TransactionIndex> {
-        let mut out: Vec<TransactionIndex> = vec![];
-        let mut remove_poses: Vec<usize> = vec![];
-
+    pub fn confirm(&mut self, block_hash: Hash256) {
         for i in (0..self.utxos.len()).rev() {
-            let utxo = self.utxos[i].clone();
-            
-            // Any UTXO in a block has already been validated and accepted.
-            // Any UTXO not in a block needs to be removed and added to the out vector
-            if utxo.block.is_none() {
-                out.push(utxo);
-                remove_poses.push(i);
+            let utxo = &mut self.utxos[i];
+
+            if utxo.block.is_some() {
+                return;
             }
-        }
 
-        for pos in remove_poses {
-            self.utxos.remove(pos);
+            utxo.block = Some(block_hash);
         }
-
-        out
     }
 }
 
@@ -349,14 +341,45 @@ fn hex_option(opt: Option<Hash256>) -> Option<String> {
     }
 }
 
+/// The size of a coinbase transaction with an empty meta field
+pub fn coinbase_size_estimate() -> usize {
+    lazy_static!{
+        static ref TXN: Transaction = Transaction {
+            version: VERSION,
+            inputs: vec![
+                TxnInput {
+                    txn_hash: [0; 32],
+                    output_idx: COINBASE_OUTPUT_IDX,
+                    unlock_script: Script {
+                        code: String::from(""),
+                        script_type: ScriptType::TsengScript
+                    }
+                }
+            ],
+            outputs: vec![
+                TxnOutput {
+                    amount: 0,
+                    lock_script: make_p2pkh_lock(&[0; 20])
+                }
+            ],
+            meta: String::from(""),
+            hash: [0; 32]
+        };
+    }
+
+    TXN.size()
+}
+
 /// The coinbase transaction is the transaction in which a miner receives a block reward. The output amount
 /// is the block reward plus the transaction fees.
-pub fn make_coinbase_txn(winner: &Address, meta: String, fees: u64) -> Transaction {
+pub fn make_coinbase_txn(winner: &Address, meta: String, fees: u64, extra_nonce: [u8; 32]) -> Transaction {
     let input = TxnInput {
         txn_hash: [0; 32],
-        output_idx: 0xFFFF_FFFF,
+        output_idx: COINBASE_OUTPUT_IDX,
         unlock_script: Script {
-            code: String::from(""),
+            // Put an extra nonce in the unlock script to disambiguate coinbase transaction hashes
+            // The unlock script is unused by coinbase transactions so there's no reason why we can't do this
+            code: hex::encode(extra_nonce),
             script_type: ScriptType::TsengScript,
         },
     };
@@ -549,4 +572,30 @@ pub fn build_utxos_from_confirmed(blocks: &Vec<Block>) -> UTXOPool {
     }
 
     pool
+}
+
+/// This function assumes that the transaction has already been validated. Because it has been validated,
+/// its inputs must exist on the blockchain or in the pending transaction pool.
+pub fn compute_input_sum(txn: &Transaction, state: &State) -> u64 {
+    let mut input_sum: u64 = 0;
+    for input in &txn.inputs {
+        let input_txn = state.get_pending_or_confirmed_txn(input.txn_hash).unwrap();
+
+        let amount = input_txn.outputs[input.output_idx].amount;
+
+        input_sum += amount;
+    }
+
+    input_sum
+}
+
+pub fn compute_output_sum(txn: &Transaction) -> u64 {
+    txn.outputs
+        .iter()
+        .fold(0, |a, e| a + e.amount)
+}
+
+// Assumes a valid transaction
+pub fn compute_fee(txn: &Transaction, state: &State) -> u64 {
+    compute_input_sum(txn, state) - compute_output_sum(txn)
 }

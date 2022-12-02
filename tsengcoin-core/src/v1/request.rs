@@ -186,9 +186,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
                                 let verify_result = verify_block(block.clone(), state);
 
                                 match verify_result {
-                                    Ok(false) => {
-                                        state.blockchain.blocks.push(block);
-                                    },
+                                    Ok(false) => (),
                                     Err(err) => {
                                         println!("Received a bad block: {}", err.to_string());
                                     },

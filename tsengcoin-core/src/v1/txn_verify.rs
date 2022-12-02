@@ -204,6 +204,9 @@ pub fn check_pending_and_orphans(state: &mut State) {
     let mut new_pending: Vec<Transaction> = vec![];
     let mut new_orphans: Vec<Transaction> = vec![];
 
+    println!("pending: {:#?}", state.pending_txns);
+    println!("orphanz: {:#?}", state.orphan_txns);
+
     for txn in state.pending_txns.iter().chain(state.orphan_txns.iter()) {
         let verify_result = verify_transaction(txn.clone(), state);
         match verify_result {

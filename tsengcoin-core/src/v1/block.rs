@@ -1,18 +1,20 @@
-use std::mem::size_of_val;
+use std::mem::{size_of_val, size_of};
 
-use chrono::{DateTime, Utc, TimeZone, Duration};
+use chrono::{Duration};
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_traits::Zero;
 use ring::digest::{Context, SHA256};
 use serde::{Serialize, Deserialize};
 
-use crate::{wallet::{Hash256, b58c_to_address}};
+use crate::{wallet::{Hash256, b58c_to_address}, hash::hash_sha256};
 
 use super::{transaction::{Transaction, make_coinbase_txn, UTXOPool, build_utxos_from_confirmed}, block_verify::verify_block, state::State, txn_verify::check_pending_and_orphans};
 
 /// Max size of a block in bytes
 pub const MAX_BLOCK_SIZE: usize = 16384;
+
+pub const MAX_TRANSACTION_FIELD_SIZE: usize = MAX_BLOCK_SIZE - size_of::<BlockHeader>();
 
 lazy_static!{
     pub static ref BLOCK_TIMESTAMP_TOLERANCE: Duration = Duration::hours(2);
@@ -31,10 +33,17 @@ pub struct BlockHeader {
     pub version: u32,
     pub prev_hash: Hash256,
     pub merkle_root: Hash256,
-    pub timestamp: DateTime<Utc>,
+    // Creation time of the block in seconds since Unix epoch
+    pub timestamp: u64,
     pub difficulty_target: Hash256,
     pub nonce: BlockNonce,
     pub hash: Hash256,
+}
+
+#[derive(Debug)]
+pub struct RawBlock {
+    pub header: RawBlockHeader,
+    pub transactions: Vec<Transaction>
 }
 
 /// Everything except the hash, so that this block can be hashed
@@ -43,7 +52,7 @@ pub struct RawBlockHeader {
     pub version: u32,
     pub prev_hash: Hash256,
     pub merkle_root: Hash256,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: u64,
     pub difficulty_target: Hash256,
     pub nonce: BlockNonce,
 }
@@ -61,6 +70,29 @@ pub struct ForkChain {
     /// The index of the previous block in the MAIN chain.
     pub prev_index: usize,
     pub blocks: Vec<Block>
+}
+
+impl RawBlockHeader {
+    pub fn to_block_header(&self, nonce: Hash256, hash: Hash256) -> BlockHeader {
+        BlockHeader {
+            version: self.version,
+            prev_hash: self.prev_hash,
+            merkle_root: self.merkle_root,
+            timestamp: self.timestamp,
+            difficulty_target: self.difficulty_target,
+            nonce,
+            hash,
+        }
+    }
+}
+
+impl From<Block> for RawBlock {
+    fn from(block: Block) -> Self {
+        Self {
+            header: (&block.header).into(),
+            transactions: block.transactions
+        }
+    }
 }
 
 impl From<&BlockHeader> for RawBlockHeader {
@@ -90,6 +122,19 @@ impl std::fmt::Debug for BlockHeader {
     }
 }
 
+impl std::fmt::Debug for RawBlockHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlockHeader")
+            .field("version", &self.version)
+            .field("prev_hash", &hex::encode(&self.prev_hash))
+            .field("merkle_root", &hex::encode(&self.merkle_root))
+            .field("timestamp", &self.timestamp)
+            .field("difficulty_target", &hex::encode(&self.difficulty_target))
+            .field("nonce", &hex::encode(&self.nonce))
+            .finish()
+    }
+}
+
 impl Block {
     pub fn get_txn(&self, hash: Hash256) -> Option<Transaction> {
         self.transactions.iter().find(|t| t.hash == hash).cloned()
@@ -106,6 +151,11 @@ impl Block {
     /// process.
     pub fn to_txns(self) -> Vec<Transaction> {
         return self.transactions;
+    }
+
+    /// Like `to_txns` except it excludes the coinbase transaction.
+    pub fn to_network_txns(self) -> Vec<Transaction> {
+        return self.transactions[1..].try_into().unwrap();
     }
 }
 
@@ -391,7 +441,7 @@ impl BlockchainDB {
             let winning_fork = &self.forks[chain_idx - 1];
 
             // Remove the extra blocks on the main chain
-            for i in (winning_fork.prev_index + 1)..self.blocks.len() {
+            for i in ((winning_fork.prev_index + 1)..self.blocks.len()).rev() {
                 out.push(self.blocks.remove(i));
             }
 
@@ -447,17 +497,19 @@ pub fn check_orphans(state: &mut State) {
 /// this function will get any blocks that need to be removed from the blockchain,
 /// and it will add their transactions back to the pending/orphan pools as well as
 /// update the UTXO database accordingly.
-pub fn resolve_forks(state: &mut State) {
+/// 
+/// Returns true if forks were present and resolved.
+pub fn resolve_forks(state: &mut State) -> bool {
     let mut fork_blocks = state.blockchain.resolve_forks();
 
     if fork_blocks.len() == 0 {
-        return;
+        return false;
     }
 
     let mut txns: Vec<Transaction> = vec![];
 
     for block in fork_blocks.drain(0..) {
-        txns.append(&mut block.to_txns());
+        txns.append(&mut block.to_network_txns());
     }
 
     state.pending_txns.append(&mut txns);
@@ -467,28 +519,41 @@ pub fn resolve_forks(state: &mut State) {
     // and is accounted for by the UTXO pool.
     state.blockchain.utxo_pool = build_utxos_from_confirmed(&state.blockchain.blocks);
     check_pending_and_orphans(state);
+
+    return true;
 }
 
 pub fn genesis_block() -> Block {
     let genesis_miner = b58c_to_address(String::from("2LuJkN1xDRRM2R2h2H4qnSspy4qmwoZfor")).expect("Failed to create genesis block");
-    let coinbase = make_coinbase_txn(&genesis_miner, String::from("genesis block"), 0);
-    let target_bytes = hex::decode("00000000f0000000000000000000000000000000000000000000000000000000").unwrap();
+    let coinbase = make_coinbase_txn(&genesis_miner, String::from("genesis block"), 0, [0x69; 32]);
+
+    let target_bytes = hex::decode("0000000f00000000000000000000000000000000000000000000000000000000").unwrap();
     let mut target = [0 as u8; 32];
     target.copy_from_slice(&target_bytes);
 
-    // TODO: Make Merkle root correctly
+    // This nonce will produce the hash "0000000c9785be4989caa7cf9b7dca9161bbe8334f692fbf277fce1e23f9df2a"
+    let nonce_bytes = hex::decode("0487ec8e16f44da6d0d17e6e9c2bdc097c1eda445879a7df3d96a06b4acd0aa2").unwrap();
+    let mut nonce = [0 as u8; 32];
+    nonce.copy_from_slice(&nonce_bytes);
+
+    let txns = vec![coinbase];
+
+    // The merkle root in this case is just the coinbase hash but the function call
+    // is included to make the meaning clear
+    let merkle_root = make_merkle_root(&txns);
 
     let mut header = BlockHeader {
         version: 1,
         prev_hash: [0; 32],
-        merkle_root: coinbase.hash,
-        timestamp: Utc.ymd(2022, 11, 4).and_hms(12, 0, 0),
+        merkle_root,
+        timestamp: 1669939462,
         difficulty_target: target,
-        nonce: [0x45; 32],
+        nonce,
         hash: [0; 32]
     };
 
     let raw: RawBlockHeader = (&header).into();
+
     let raw_bytes = bincode::serialize(&raw).expect("Failed to serialize genesis block header");
     let mut context = Context::new(&SHA256);
     context.update(&raw_bytes);
@@ -499,19 +564,75 @@ pub fn genesis_block() -> Block {
 
     Block {
         header,
-        transactions: vec![coinbase],
+        transactions: txns,
     }
 }
 
 pub fn hash_block_header(header: &RawBlockHeader) -> Hash256 {
     let bytes = bincode::serialize(header).unwrap();
-    let mut context = Context::new(&SHA256);
-    context.update(&bytes);
-    let digest = context.finish();
-    let hash = digest.as_ref();
+    hash_sha256(&bytes)
+}
 
-    let mut out = [0 as u8; 32];
-    out.copy_from_slice(hash);
+/// Assumes that the transaction array is not empty. The caller should enforce
+/// this!
+pub fn make_merkle_root(txns: &Vec<Transaction>) -> Hash256 {
+    if txns.len() == 0 {
+        panic!("Transaction array cannot be empty");
+    }
+
+    if txns.len() == 1 {
+        return txns[0].hash;
+    }
+
+    let mut hashes = txns
+        .iter()
+        .map(|t| t.hash)
+        .collect::<Vec<Hash256>>();
+
+    while hashes.len() > 1 {
+        hashes = merkle_round(hashes);
+    }
+
+    hashes[0]
+}
+
+pub fn make_merkle_root_from_hashes(hashes: Vec<Hash256>) -> Hash256 {
+    let mut out = hashes.clone();
+
+    while out.len() > 1 {
+        out = merkle_round(out);
+    }
+
+    out[0]
+}
+
+fn merkle_round(hashes: Vec<Hash256>) -> Vec<Hash256> {
+    if hashes.len() == 1 {
+        return hashes;
+    }
+
+    let mut hashes_in = vec![[0 as u8; 32]; ((hashes.len() + 1) / 2) * 2];
+    hashes_in[0..hashes.len()].copy_from_slice(&hashes);
+    let num_hashes = hashes_in.len();
+
+    // Duplicate the last hash if we have an odd number of transactions
+    if hashes.len() % 2 == 1 {
+        hashes_in[num_hashes - 1] = hashes_in[num_hashes - 2].clone();
+    }
+
+    let mut out: Vec<Hash256> = vec![];
+
+    for i in (0..hashes_in.len()).step_by(2) {
+        let hash1 = &hashes_in[i];
+        let hash2 = &hashes_in[i + 1];
+        let mut raw_data = hash1.to_vec();
+
+        raw_data.append(&mut hash2.to_vec());
+
+        let new_hash = hash_sha256(&raw_data);
+
+        out.push(new_hash);
+    }
 
     out
 }

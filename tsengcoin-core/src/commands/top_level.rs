@@ -3,8 +3,11 @@ use std::sync::Mutex;
 
 use ring::signature::KeyPair;
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections}};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}};
 use super::session::listen_for_commands;
+
+#[cfg(all(feature = "debug", feature = "cuda_miner"))]
+use super::cuda_debug::make_command_map as make_cuda_dbg_command_map;
 
 fn run_script(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let script = invocation.get_field("script").unwrap();
@@ -91,6 +94,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
     let wallet_password = invocation.get_field("wallet-password").unwrap();
+    let with_miner = invocation.get_flag("with-miner");
 
     let keypair = load_keypair(&wallet_password, &wallet_path)?;
     let address: Address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
@@ -103,7 +107,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 
     println!("Connecting to node at {} and starting bootstrap process", seed_addr);
 
-    let state = State::new(addr_me, keypair);
+    let (state, miner_receiver) = State::new(addr_me, keypair);
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -112,16 +116,25 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     discover(seed_addr, &state_arc)?;
     download_latest_blocks(&state_arc)?;
 
-    thread::spawn(move || {
-        println!("Starting network listener thread");
+    println!("Starting network listener thread");
+    thread::Builder::new().name(String::from("network-listener")).spawn(move || {
         listen_for_connections(addr_me, &state_arc_2).expect("Network listener thread crashed");
-    });
-
-    advertise_self(&state_arc)?;
+        advertise_self(&state_arc_2).expect("Failed to advertise self to network");
+    }).unwrap();
 
     println!("Bootstrapping complete\nStarting worker threads");
 
+    if with_miner {
+        let state_arc_3 = Arc::clone(&state_arc);
+
+        println!("Starting miner thread");
+        thread::Builder::new().name(String::from("miner")).spawn(move || {
+            start_miner(&state_arc_3, miner_receiver);
+        }).unwrap();
+    }
+
     println!("Type a command, or 'help' for a list of commands");
+
     listen_for_commands(&state_arc);
 
     Ok(())
@@ -131,6 +144,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
     let wallet_password = invocation.get_field("wallet-password").unwrap();
+    let with_miner = invocation.get_flag("with-miner");
 
     let keypair = load_keypair(&wallet_password, &wallet_path)?;
     let address: Address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
@@ -140,19 +154,29 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
 
     let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
 
-    let state = State::new(addr_me, keypair);
+    let (state, miner_receiver) = State::new(addr_me, keypair);
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
 
     println!("Skipping bootstrapping, because `start-seed` was used instead of `connect`. Run `connect` if you wish to connect to an existing TsengCoin network");
 
-    thread::spawn(move || {
-        println!("Starting network listener thread");
+    println!("Starting network listener thread");
+    thread::Builder::new().name(String::from("network-listener")).spawn(move || {
         listen_for_connections(addr_me, &state_arc_2).expect("Network listener thread crashed");
-    });
+    }).unwrap();
+
+    if with_miner {
+        let state_arc_3 = Arc::clone(&state_arc);
+
+        println!("Starting miner thread");
+        thread::Builder::new().name(String::from("miner")).spawn(move || {
+            start_miner(&state_arc_3, miner_receiver);
+        }).unwrap();
+    }
 
     println!("Type a command, or 'help' for a list of commands");
+
     listen_for_commands(&state_arc);
 
     Ok(())
@@ -269,7 +293,12 @@ pub fn make_command_map() -> CommandMap<()> {
                 "Password to your wallet"
             )
         ],
-        flags: vec![],
+        flags: vec![
+            Flag::new(
+                "with-miner",
+                "Set this flag if you want to mine TsengCoin in the background"
+            )
+        ],
         desc: String::from("Connect to the TsengCoin network as a full node. Unless you're trying to do fancy stuff, this is probably the command you want. If you don't have a wallet yet, run `create-address` first.")
     };
     let start_seed_cmd: Command<()> = Command {
@@ -291,7 +320,12 @@ pub fn make_command_map() -> CommandMap<()> {
                 "Password to your wallet file"
             )
         ],
-        flags: vec![],
+        flags: vec![
+            Flag::new(
+                "with-miner",
+                "Set this flag if you want to mine TsengCoin in the background"
+            )
+        ],
         desc: String::from("Start as a full node without bootstrapping. The node will not attempt to connect to any network, and it will use whatever blockchain data it has locally.")
     };
 
@@ -303,6 +337,14 @@ pub fn make_command_map() -> CommandMap<()> {
     out.insert(String::from("test-load-keypair"), test_load_keypair_cmd);
     out.insert(String::from("connect"), connect_cmd);
     out.insert(String::from("start-seed"), start_seed_cmd);
+
+    #[cfg(all(feature = "debug", feature = "cuda_miner"))]
+    {
+        let cuda_dbg_cmds = make_cuda_dbg_command_map();
+        for (key, val) in cuda_dbg_cmds.into_iter() {
+            out.insert(key, val);
+        }
+    }
 
     out
 }

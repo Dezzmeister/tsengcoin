@@ -181,6 +181,15 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
     Ok(())
 }
 
+fn hashes_per_sec(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let guard = state.unwrap().lock().unwrap();
+    let state = &*guard;
+
+    println!("Hashes per second: {}", state.hashes_per_second);
+
+    Ok(())
+}
+
 pub fn listen_for_commands(state_mut: &Mutex<State>) {
     let mut command_map = HashMap::new();
     let getpeerinfo_cmd: Command<&Mutex<State>> = Command {
@@ -251,6 +260,12 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         ],
         desc: String::from("Send a recipient TsengCoins in a P2PKH transaction. This is the most widely used style of transaction")
     };
+    let hashes_per_sec_cmd: Command<&Mutex<State>> = Command {
+        processor: hashes_per_sec,
+        expected_fields: vec![],
+        flags: vec![],
+        desc: String::from("Get the hashrate of the miner, if it's running.")
+    };
 
     command_map.insert(String::from("getpeerinfo"), getpeerinfo_cmd);
     command_map.insert(String::from("getknowninfo"), getknowninfo_cmd);
@@ -258,6 +273,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
     command_map.insert(String::from("blockchain-stats"), blockchain_stats_cmd);
     command_map.insert(String::from("balance-p2pkh"), balance_p2pkh_cmd);
     command_map.insert(String::from("send-coins-p2pkh"), send_coins_p2pkh_cmd);
+    command_map.insert(String::from("hashes-per-sec"), hashes_per_sec_cmd);
 
     // Include debug commands if the feature is enabled
     #[cfg(feature = "debug")]

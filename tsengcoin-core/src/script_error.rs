@@ -37,15 +37,16 @@ impl StdError for ErrorKind {
 }
 
 impl fmt::Display for ErrorKind {
+    #[allow(deprecated)]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
-            ErrorKind::ScriptTooLong(max_len, actual_len) => write!(fmt, "{}: Max length: {}B, actual length: {}B", self.to_string(), max_len, actual_len),
-            ErrorKind::InvalidScriptToken(token) => write!(fmt, "{}: token: {}", self.to_string(), token),
-            ErrorKind::ScriptStackUnderflow => write!(fmt, "{}", self.to_string()),
-            ErrorKind::ScriptStackOverflow => write!(fmt, "{}", self.to_string()),
-            ErrorKind::InvalidTokenType => write!(fmt, "{}", self.to_string()),
-            ErrorKind::IntegerOverflow => write!(fmt, "{}", self.to_string()),
-            ErrorKind::EqualVerifyFailed => write!(fmt, "{}", self.to_string()),
+            ErrorKind::ScriptTooLong(max_len, actual_len) => write!(fmt, "{}: Max length: {}B, actual length: {}B", self.description(), max_len, actual_len),
+            ErrorKind::InvalidScriptToken(token) => write!(fmt, "{}: token: {}", self.description(), token),
+            ErrorKind::ScriptStackUnderflow => write!(fmt, "{}", self.description()),
+            ErrorKind::ScriptStackOverflow => write!(fmt, "{}", self.description()),
+            ErrorKind::InvalidTokenType => write!(fmt, "{}", self.description()),
+            ErrorKind::IntegerOverflow => write!(fmt, "{}", self.description()),
+            ErrorKind::EqualVerifyFailed => write!(fmt, "{}", self.description()),
         }
     }
 }

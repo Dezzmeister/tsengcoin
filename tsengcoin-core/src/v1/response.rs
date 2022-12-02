@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::wallet::Hash256;
 
-use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block, resolve_forks}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block};
+use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
@@ -190,8 +190,7 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, state_mut: &Mutex<
     match is_orphan {
         true => state.orphan_txns.push(data.clone()),
         false => {
-            state.pending_txns.push(data.clone());
-            state.blockchain.utxo_pool.update_unconfirmed(&data);
+            state.add_pending_txn(data.clone());
         }
     };
 
@@ -205,6 +204,12 @@ pub fn handle_new_block(data: Block, _socket: &TcpStream, state_mut: &Mutex<Stat
     let state = &mut *guard;
 
     let block_hash = data.header.hash;
+
+    let existing_block = state.blockchain.get_block(block_hash);
+    if existing_block.is_some() {
+        return Ok(());
+    }
+
     let verify_result = verify_block(data.clone(), state);
 
     match verify_result {
@@ -214,14 +219,16 @@ pub fn handle_new_block(data: Block, _socket: &TcpStream, state_mut: &Mutex<Stat
         },
         Ok(true) => {
             println!("Received new orphan block: {}", hex::encode(&block_hash));
+            return Ok(())
         },
         Ok(false) => {
             println!("Received new block: {}", hex::encode(&block_hash));
         }
     };
 
-    resolve_forks(state);
-    
+    state.resolve_forks();
+
+    state.network.broadcast_msg(&Request::NewBlock(data));
 
     Ok(())
 }

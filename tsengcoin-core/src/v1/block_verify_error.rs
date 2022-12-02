@@ -22,7 +22,8 @@ pub enum ErrorKind {
     TxnError(TxnVerifyError, Hash256),
     OrphanTxn(Hash256),
     InvalidCoinbase,
-    InvalidCoinbaseAmount(u64, u64)
+    InvalidCoinbaseAmount(u64, u64),
+    InvalidMerkleRoot
 }
 
 impl StdError for ErrorKind {
@@ -37,7 +38,8 @@ impl StdError for ErrorKind {
             ErrorKind::TxnError(_, _) => "Invalid transaction in block",
             ErrorKind::OrphanTxn(_) => "Orphan transaction in block",
             ErrorKind::InvalidCoinbase => "Invalid coinbase transaction",
-            ErrorKind::InvalidCoinbaseAmount(_, _) => "Invalid coinbase transaction amount"
+            ErrorKind::InvalidCoinbaseAmount(_, _) => "Invalid coinbase transaction amount",
+            ErrorKind::InvalidMerkleRoot => "Invalid merkle root"
         }
     }
 
@@ -47,18 +49,20 @@ impl StdError for ErrorKind {
 }
 
 impl fmt::Display for ErrorKind {
+    #[allow(deprecated)]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
-            ErrorKind::IncorrectDifficulty => write!(fmt, "{}", self.to_string()),
-            ErrorKind::FailedProofOfWork => write!(fmt, "{}", self.to_string()),
-            ErrorKind::InvalidHeaderHash => write!(fmt, "{}", self.to_string()),
-            ErrorKind::OldBlock => write!(fmt, "{}", self.to_string()),
-            ErrorKind::TooLarge(max_size, actual_size) => write!(fmt, "{}: max size is {}B, block is {}B", self.to_string(), max_size, actual_size),
-            ErrorKind::EmptyBlock => write!(fmt, "{}", self.to_string()),
-            ErrorKind::TxnError(err, txn) => write!(fmt, "{}: error: {}, txn: {}", self.to_string(), err.to_string(), hex::encode(txn)),
-            ErrorKind::OrphanTxn(txn) => write!(fmt, "{}: txn: {}", self.to_string(), hex::encode(txn)),
-            ErrorKind::InvalidCoinbase => write!(fmt, "{}", self.to_string()),
-            ErrorKind::InvalidCoinbaseAmount(exp, actual) => write!(fmt, "{}: expected: {}, actual: {}", self.to_string(), exp, actual)
+            ErrorKind::IncorrectDifficulty => write!(fmt, "{}", self.description()),
+            ErrorKind::FailedProofOfWork => write!(fmt, "{}", self.description()),
+            ErrorKind::InvalidHeaderHash => write!(fmt, "{}", self.description()),
+            ErrorKind::OldBlock => write!(fmt, "{}", self.description()),
+            ErrorKind::TooLarge(max_size, actual_size) => write!(fmt, "{}: max size is {}B, block is {}B", self.description(), max_size, actual_size),
+            ErrorKind::EmptyBlock => write!(fmt, "{}", self.description()),
+            ErrorKind::TxnError(err, txn) => write!(fmt, "{}: error: {}, txn: {}", self.description(), err.to_string(), hex::encode(txn)),
+            ErrorKind::OrphanTxn(txn) => write!(fmt, "{}: txn: {}", self.description(), hex::encode(txn)),
+            ErrorKind::InvalidCoinbase => write!(fmt, "{}", self.description()),
+            ErrorKind::InvalidCoinbaseAmount(exp, actual) => write!(fmt, "{}: expected: {}, actual: {}", self.description(), exp, actual),
+            ErrorKind::InvalidMerkleRoot => write!(fmt, "{}", self.description())
         }
     }
 }

@@ -110,7 +110,7 @@ pub fn dispatch_command<T>(args: &Vec<String>, map: &CommandMap<T>, state: Optio
     let invocation = decompose_raw_args(args, &command.expected_fields).expect("Failed to decompose command");
 
     match (command.processor)(&invocation, state) {
-        Err(err) => println!("Error executing command: {:?}", err),
+        Err(err) => eprintln!("Error executing command: {}", err),
         Ok(_) => (),
     }
 }

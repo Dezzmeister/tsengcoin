@@ -1,7 +1,7 @@
 use chrono::{Utc};
 
-use super::block::{RawBlockHeader, hash_block_header, MAX_BLOCK_SIZE, BLOCK_TIMESTAMP_TOLERANCE, check_orphans};
-use super::transaction::{BLOCK_REWARD, UnhashedTransaction, hash_txn, Transaction, build_utxos_from_confirmed};
+use super::block::{RawBlockHeader, hash_block_header, MAX_BLOCK_SIZE, BLOCK_TIMESTAMP_TOLERANCE, make_merkle_root};
+use super::transaction::{BLOCK_REWARD, UnhashedTransaction, hash_txn, Transaction, build_utxos_from_confirmed, compute_input_sum};
 use super::txn_verify::{verify_transaction, check_pending_and_orphans};
 use super::{block_verify_error::BlockVerifyResult, block::Block, state::State};
 
@@ -15,6 +15,7 @@ use super::block_verify_error::ErrorKind::TxnError;
 use super::block_verify_error::ErrorKind::OrphanTxn;
 use super::block_verify_error::ErrorKind::InvalidCoinbase;
 use super::block_verify_error::ErrorKind::InvalidCoinbaseAmount;
+use super::block_verify_error::ErrorKind::InvalidMerkleRoot;
 
 /// Verifies a new block. Returns true if the block is an orphan. Unlike [verify_transaction],
 /// this function will mutate the state. If the block is an orphan, it will add the block to the orphan
@@ -54,8 +55,10 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
         return Err(Box::new(IncorrectDifficulty));
     }
 
+    let block_hash = block.header.hash;
+
     // The hash must satisy proof of work
-    if block.header.hash >= current_difficulty {
+    if block_hash >= current_difficulty {
         return Err(Box::new(FailedProofOfWork));
     }
 
@@ -67,12 +70,12 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
         return Err(Box::new(InvalidHeaderHash));
     }
 
-    let now = Utc::now();
+    let now: u64 = Utc::now().timestamp().try_into().unwrap();
 
-    let time_diff = (now - block.header.timestamp).num_seconds().abs();
+    let time_diff = now - block.header.timestamp;
 
     // The block cannot have a timestamp too far in the past or too far in the future
-    if time_diff > BLOCK_TIMESTAMP_TOLERANCE.num_seconds() {
+    if time_diff > BLOCK_TIMESTAMP_TOLERANCE.num_seconds().try_into().unwrap() {
         return Err(Box::new(OldBlock));
     }
 
@@ -96,6 +99,10 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
 
     let coinbase = &block.transactions[0];
     let mut total_fees: u64 = 0;
+
+    // First add the coinbase transaction as an unconfirmed UTXO. This needs to happen before we
+    // actually verify the transaction because future transactions may depend on it.
+    state.blockchain.utxo_pool.update_unconfirmed(&coinbase);
 
     // Verify each transaction separately
     for txn in &block.transactions[1..] {
@@ -133,29 +140,10 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
         // can find it. We can't add it as a confirmed transaction because the block containing
         // it does not yet exist on the blockchain.
         state.pending_txns.push(txn.clone());
-        state.blockchain.utxo_pool.update_unconfirmed(&txn);
+        state.blockchain.utxo_pool.update_unconfirmed(txn);
 
         // Add up the input amounts and output amounts and compute the fee
-        let mut input_sum: u64 = 0;
-        for input in &txn.inputs {
-            // We can just unwrap this because we know it must exist, since we just validated
-            // the transaction. For the same reason we can just unwrap all the stuff
-            // in this match expression
-            let input_utxo = state.blockchain.utxo_pool.utxos.iter().find(|u| u.txn == input.txn_hash).unwrap();
-            let input_txn = match input_utxo.block {
-                Some(block_hash) => {
-                    let (block, _, _) = state.blockchain.get_block(block_hash).unwrap();
-                    block.get_txn(input_utxo.txn).unwrap()
-                },
-                None => {    
-                    state.get_pending_txn(input_utxo.txn).unwrap()
-                }
-            };
-
-            let amount = input_txn.outputs[input.output_idx].amount;
-
-            input_sum += amount;
-        }
+        let input_sum: u64 = compute_input_sum(txn, state);
 
         let output_sum = 
             txn.outputs
@@ -204,36 +192,50 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
         return Err(Box::new(InvalidCoinbase));
     }
 
-    // TODO: Merkle tree check
+    // The merkle root needs to match the actual merkle root
+    let expected_merkle_root = make_merkle_root(&block.transactions);
+    if expected_merkle_root != block.header.merkle_root {
+        restore_utxo_pool(state, &block_path, old_pending);
+        return Err(Box::new(InvalidMerkleRoot));
+    }
 
     // At this point, the block is valid. Now we just need to do some bookkeeping and update our UTXO
     // database, pending transaction pool, and orphan transaction pool.
 
+    /*
     for utxo in &mut state.blockchain.utxo_pool.utxos {
         if utxo.block.is_none() {
             utxo.block = Some(block.header.hash);
         }
     }
+    */
 
     state.pending_txns = old_pending;
 
-    for pos in pending_to_remove {
+    pending_to_remove.sort();
+    orphans_to_remove.sort();
+
+    for i in (0..pending_to_remove.len()).rev() {
+        let pos = pending_to_remove[i];
         state.pending_txns.remove(pos);
     }
 
-    for pos in orphans_to_remove {
+    for i in (0..orphans_to_remove.len()).rev() {
+        let pos = orphans_to_remove[i];
         state.orphan_txns.remove(pos);
     }
 
-    check_pending_and_orphans(state);
-
     // We can't leave the blockchain in an invalid state. We must add the newly verified block to the
     // blockchain before returning
-    state.blockchain.add_block(block);
+    state.add_block(block);
 
-    // We also need to check orphan blocks and see if they can be added too. If so, we will need to re-verify them
-    // and add them only if they're valid.
-    check_orphans(state);
+    // At this point, all the unconfirmed UTXOs in the UTXO pool are from the block we just verified.
+    // Now that the block has been added to the blockchain, we can confirm those and then
+    // add the pending transactions again.
+    state.blockchain.utxo_pool.confirm(block_hash);
+
+    // Add the pending transactions and check orphans as well
+    check_pending_and_orphans(state);
 
     Ok(false)
 }
@@ -269,7 +271,10 @@ fn restore_utxo_pool(state: &mut State, utxo_blocks: &Vec<Block>, old_pending: V
         }
     }
 
-    for pos in pending_to_remove {
+    pending_to_remove.sort();
+
+    for i in (0..pending_to_remove.len()).rev() {
+        let pos = pending_to_remove[i];
         state.pending_txns.remove(pos);
     }
 }
