@@ -107,6 +107,36 @@ impl Block {
     pub fn to_txns(self) -> Vec<Transaction> {
         return self.transactions;
     }
+
+
+    pub fn get_merkle_root(&self) -> Option<Hash256> {
+        let txns: Vec<[u8; 32]> = self.transactions.iter().map(|t| t.hash).collect();
+        while txns.len() > 1 {
+            // An array to store intermediate values when building the merkle tree.
+            let mut array:Vec<[u8; 32]> ;
+
+            // Iterate through transactions two at a time.
+            for i in (0..txns.len()).step_by(2) {
+                let hash: [u8; 32];
+
+                // Combine the hash of two transactions.
+                for j in 0..txns[i].len() {
+                    hash[i] = txns[i][j] + txns[i + 1][j];
+                }
+
+                // Push the hash onto the intermediate array.
+                // The size of the array should decrease by 1/2 with every loop.
+                array.push(hash)
+
+            }
+
+            txns = array
+        }
+
+        Some(txns[0])
+
+    }
+
 }
 
 impl BlockHeader {
