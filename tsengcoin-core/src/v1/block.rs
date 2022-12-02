@@ -110,7 +110,10 @@ impl Block {
 
 
     pub fn get_merkle_root(&self) -> Option<Hash256> {
-        let txns: Vec<[u8; 32]> = self.transactions.iter().map(|t| t.hash).collect();
+        let txns: Vec<[u8; 32]> = self.transactions.iter().
+        map(|t| t.hash)
+        .collect();
+
         while txns.len() > 1 {
             // An array to store intermediate values when building the merkle tree.
             let mut array:Vec<[u8; 32]> ;
@@ -127,14 +130,10 @@ impl Block {
                 // Push the hash onto the intermediate array.
                 // The size of the array should decrease by 1/2 with every loop.
                 array.push(hash)
-
             }
-
             txns = array
         }
-
         Some(txns[0])
-
     }
 
 }
