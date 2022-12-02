@@ -10,6 +10,12 @@ This means that when a transaction output is used as a valid input somewhere els
 
 A transaction in TsengCoin is uniquely identified by its hash. The hash is computed by serializing all of the transaction's fields and hashing the data with SHA256.
 
+## Confirmed/Unconfirmed Transactions
+
+The distinction between a confirmed and an unconfirmed transaction is that confirmed transactions exist in blocks on the blockchain and have therefore been "confirmed." The number of confirmations of a transaction/block is the depth of the transaction/block on the blockchain. Higher confirmations means that an item is unlikely to be removed from the blockchain. See [Blocks](./Blocks.md) for a more detailed explanation of the conditions that might cause blocks to be removed from the blockchain.
+
+If a confirmed transaction is any that lives in a verified and connected block, then an unconfirmed transaction is any valid transaction that does not. The pending transaction pool and orphan transaction pool both contain unconfirmed transactions, waiting for miners to group them into blocks and confirm them. The logical order of transactions must always be preserved! At no point can a confirmed transaction depend on an unconfirmed transaction. This is enforced when new blocks are validated.
+
 ## Authorization Methods
 
 A transaction output does not directly specify a recipient of some amount of TsengCoin. Instead, the output specifies a condition that must be met in order for the recipient to claim the TsengCoin. This condition is encoded as a script (written in [TsengScript](./TsengScript.md)). The condition specified in the transaction is called the locking script. Anyone who wants to claim the transaction output must provide an unlocking script that satisifes the condition imposed by the locking script. In order for a transaction input to satisfy the condition imposed by a previous transaction output, the following is done:
@@ -85,3 +91,14 @@ A transaction does not have to use the P2PKH scheme described above. There are m
 ## UTXOs
 
 If you use TsengCoin for anything you will likely have transactions in which you received some TsengCoin that you haven't spent yet. (Remember that the transaction is not the thing authorizing you to TsengCoin, but instead an individual output of the transaction. Transactions can have multiple outputs that authorize different addresses to TsengCoin.) An unspent transaction output is a UTXO, and the core client maintains a database of all UTXOs (for all addresses). The core client's UTXO database consists only of outputs with locking scripts of a known format. As of 11/28/2022, the core client only includes P2PKH outputs in the UTXO database. This is because it is easy to determine the recipient of a P2PKH output; you can just extract the address and compare it to a known address. For example, if you want to get the TsengCoin balance for `2LuJkN1xDRRM2R2h2H4qnSspy4qmwoZfor`, you can just search the UTXO database for any UTXOs where the output script is P2PKH and the address is `5686215dbe4915045db3def6ab7172a1bdf3e6e4` (this is the base58check decoded raw address for `2LuJkN1xDRRM2R2h2H4qnSspy4qmwoZfor`).
+
+Each UTXO in the database is a "transaction index" that points to either an unconfirmed or a confirmed transaction. In most cases, the UTXO database will contain a logical and valid transaction order, meaning that every transaction in the UTXO database is valid and all UTXOs are in the correct order, with confirmed UTXOs first and unconfirmed last. The exception to this is the verification function `verify_block`, which resets the global UTXO database during execution so that it can verify transactions in a block. This function takes care not to leave the UTXO database in an intermediate state though, so that any other functions can expect the UTXO database to be valid.
+
+## Coinbase
+
+Each block includes one transaction which is unlike the others. This is called the coinbase transaction, and it is the transaction that grants miners their reward. There are a few conditions that the coinbase transaction must satisfy. These are enforced by the `verify_block` function (instead of the usual `verify_transaction`) because coinbase transactions are not relayed over the network.
+
+- The coinbase transaction must be the first and only coinbase transaction in a block
+- It must have one input and one output
+- The input hash must be zero, and the index must be 0xFFFF_FFFF. No other transaction will ever have this many outputs, so the presence of an input pointing to output index 0xFFFF_FFFF is a clear indicator of a coinbase transaction.
+- The amount listed in the output must be the block reward plus block fees.

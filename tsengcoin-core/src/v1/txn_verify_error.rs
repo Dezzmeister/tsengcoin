@@ -55,21 +55,22 @@ impl StdError for ErrorKind {
 }
 
 impl fmt::Display for ErrorKind {
+    #[allow(deprecated)]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
-            ErrorKind::EmptyInputs => write!(fmt, "{}", self.to_string()),
-            ErrorKind::EmptyOutputs => write!(fmt, "{}", self.to_string()),
-            ErrorKind::TooLarge => write!(fmt, "{}. Cannot exceed {} bytes", self.to_string(), MAX_BLOCK_SIZE),
-            ErrorKind::OutOfRange(val) => write!(fmt, "{}. Max is {} TsengCoin, received {}", self.to_string(), MAX_TXN_AMOUNT, val),
-            ErrorKind::Coinbase => write!(fmt, "{}", self.to_string()),
-            ErrorKind::InvalidUTXOIndex => write!(fmt, "{}", self.to_string()),
-            ErrorKind::Script(err) => write!(fmt, "{}: {}", self.to_string(), err.to_string()),
-            ErrorKind::BadUnlockScript(hash, output_idx) => write!(fmt, "{}: input transaction {}, output {}", self.to_string(), hex::encode(hash), output_idx),
-            ErrorKind::Overspend(input_amt, output_amt) => write!(fmt, "{}: tried to spend {} when only {} provided as input", self.to_string(), output_amt, input_amt),
-            ErrorKind::LowFee(fee) => write!(fmt, "{}: Tried to spend fee of {}, minimum fee is {}", self.to_string(), fee, MIN_TXN_FEE),
-            ErrorKind::DoubleSpend(hash, output_idx) => write!(fmt, "{}: hash: {}, output index: {}", self.to_string(), hex::encode(hash), output_idx),
-            ErrorKind::InvalidHash => write!(fmt, "{}", self.to_string()),
-            ErrorKind::ZeroOutput => write!(fmt, "{}", self.to_string())
+            ErrorKind::EmptyInputs => write!(fmt, "{}", self.description()),
+            ErrorKind::EmptyOutputs => write!(fmt, "{}", self.description()),
+            ErrorKind::TooLarge => write!(fmt, "{}. Cannot exceed {} bytes", self.description(), MAX_BLOCK_SIZE),
+            ErrorKind::OutOfRange(val) => write!(fmt, "{}. Max is {} TsengCoin, received {}", self.description(), MAX_TXN_AMOUNT, val),
+            ErrorKind::Coinbase => write!(fmt, "{}", self.description()),
+            ErrorKind::InvalidUTXOIndex => write!(fmt, "{}", self.description()),
+            ErrorKind::Script(err) => write!(fmt, "{}: {}", self.description(), err.to_string()),
+            ErrorKind::BadUnlockScript(hash, output_idx) => write!(fmt, "{}: input transaction {}, output {}", self.description(), hex::encode(hash), output_idx),
+            ErrorKind::Overspend(input_amt, output_amt) => write!(fmt, "{}: tried to spend {} when only {} provided as input", self.description(), output_amt, input_amt),
+            ErrorKind::LowFee(fee) => write!(fmt, "{}: Tried to spend fee of {}, minimum fee is {}", self.description(), fee, MIN_TXN_FEE),
+            ErrorKind::DoubleSpend(hash, output_idx) => write!(fmt, "{}: hash: {}, output index: {}", self.description(), hex::encode(hash), output_idx),
+            ErrorKind::InvalidHash => write!(fmt, "{}", self.description()),
+            ErrorKind::ZeroOutput => write!(fmt, "{}", self.description())
         }
     }
 }

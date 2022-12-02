@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-cuda_miner = ["cust", "cuda_builder", "nvvm", "rustc_codegen_nvvm"]
+# Enable this flag to build the core client with the runtime CUDA miner
+cuda_miner = ["cust"]
+# Enable this flag to build the core client and the CUDA miner kernel (very slow!)
+cuda_miner_kernel = ["cuda_builder", "nvvm", "rustc_codegen_nvvm"]
+# Enable this flag to build the core client with debug features
 debug = []
 
 [dependencies]

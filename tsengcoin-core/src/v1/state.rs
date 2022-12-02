@@ -1,11 +1,13 @@
-use std::{net::SocketAddr, fs, error::Error};
+use std::{net::SocketAddr, fs, error::Error, sync::mpsc::{Sender, Receiver, channel}};
 
 use ring::signature::{EcdsaKeyPair, KeyPair};
 
 use crate::wallet::{Address, address_from_public_key, Hash256};
 
-use super::{net::Network, block::{BlockchainDB, genesis_block}, transaction::{Transaction, UTXOPool, TransactionIndex}};
+use super::{net::Network, block::{BlockchainDB, genesis_block, Block, resolve_forks}, transaction::{Transaction, UTXOPool, TransactionIndex}, miners::api::MinerMessage};
 
+/// TODO: Implement blockchain DB in filesystem or at least have a feature to enable it so we don't have to
+/// download blocks every time
 pub const DATA_DIR: &str = ".data";
 pub const BLOCKCHAIN_DB_FILE: &str = "blockchain";
 
@@ -20,14 +22,17 @@ pub struct State {
     pub pending_txns: Vec<Transaction>,
     /// Valid transactions that reference a parent that does not exist.
     pub orphan_txns: Vec<Transaction>,
+    pub hashes_per_second: usize,
+    miner_channel: Sender<MinerMessage>
 }
 
 impl State {
-    pub fn new(addr_me: SocketAddr, keypair: EcdsaKeyPair) -> Self {
+    pub fn new(addr_me: SocketAddr, keypair: EcdsaKeyPair) -> (Self, Receiver<MinerMessage>) {
         let address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
         let blockchain = load_blockchain_db();
+        let (sender, receiver) = channel();
 
-        Self {
+        (Self {
             local_addr_me: addr_me,
             remote_addr_me: None,
             network: Network {
@@ -38,8 +43,11 @@ impl State {
             address,
             blockchain,
             pending_txns: vec![],
-            orphan_txns: vec![]
-        }
+            orphan_txns: vec![],
+            hashes_per_second: 0,
+            miner_channel: sender,
+        },
+        receiver)
     }
 
     /// TODO: Save the blockchain to a file
@@ -61,6 +69,12 @@ impl State {
         self.pending_txns.iter().find(|t| **t == txn).cloned()
     }
 
+    pub fn get_orphan_txn<T: PartialEq>(&self, txn: T) -> Option<Transaction>
+        where Transaction: PartialEq<T>
+    {
+        self.orphan_txns.iter().find(|t| **t == txn).cloned()
+    }
+
     pub fn get_pending_or_confirmed_txn(&self, txn: Hash256) -> Option<Transaction> {
         let pending = self.pending_txns.iter().find(|t| **t == txn);
         if pending.is_some() {
@@ -69,10 +83,43 @@ impl State {
 
         let block_txn_opt = self.blockchain.find_txn(txn);
         if block_txn_opt.is_some() {
-            return Some(block_txn_opt.unwrap().2);
+            return Some(block_txn_opt.unwrap().txn);
         }
 
         None
+    }
+
+    pub fn set_pending_txns(&mut self, new_txns: Vec<Transaction>) {
+        let num_new_txns = new_txns.len() - self.pending_txns.len();
+        self.pending_txns = new_txns;
+        match self.miner_channel.send(MinerMessage::NewTransactions(num_new_txns)) {
+            Ok(_) | Err(_) => ()
+        };
+    }
+
+    pub fn add_pending_txn(&mut self, txn: Transaction) {
+        self.pending_txns.push(txn.clone());
+        self.blockchain.utxo_pool.update_unconfirmed(&txn);
+        match self.miner_channel.send(MinerMessage::NewTransactions(1)) {
+            Ok(_) | Err(_) => ()
+        };
+    }
+
+    pub fn add_block(&mut self, block: Block) {
+        let hash = block.header.hash;
+        self.blockchain.add_block(block);
+        match self.miner_channel.send(MinerMessage::NewBlock(hash, true)) {
+            Ok(_) | Err(_) => ()
+        };
+    }
+
+    pub fn resolve_forks(&mut self) {
+        if resolve_forks(self) {
+            let hash = self.blockchain.top_hash(0);
+            match self.miner_channel.send(MinerMessage::NewBlock(hash, true)) {
+                Ok(_) | Err(_) => ()
+            };
+        }
     }
 }
 

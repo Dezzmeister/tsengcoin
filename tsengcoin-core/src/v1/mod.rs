@@ -1,3 +1,5 @@
+pub mod miners;
+
 pub mod block;
 pub mod transaction;
 pub mod net;
