@@ -114,6 +114,10 @@ impl Block {
         map(|t| t.hash)
         .collect();
 
+        if txns.len() % 2 != 0 {
+            txns.push([0; 32]);
+        }
+
         while txns.len() > 1 {
             // An array to store intermediate values when building the merkle tree.
             let mut array:Vec<[u8; 32]> ;
