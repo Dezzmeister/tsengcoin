@@ -31,6 +31,13 @@ pub struct Transaction {
     pub hash: Hash256,
 }
 
+pub struct ConfirmedTransaction {
+    pub block: Hash256,
+    pub txn: Transaction,
+    pub chain_idx: usize,
+    pub confirmations: usize
+}
+
 /// A transaction before signing. Meant to be serialized and signed that way. The inputs are not signed
 /// because the signature will likely need to be provided in unlocking scripts for each input.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -302,6 +309,17 @@ impl std::fmt::Debug for Transaction {
             .field("outputs", &self.outputs)
             .field("meta", &self.meta)
             .field("hash", &hex::encode(&self.hash))
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ConfirmedTransaction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConfirmedTransaction")
+            .field("block", &hex::encode(&self.block))
+            .field("txn", &self.txn)
+            .field("chain_idx", &self.chain_idx)
+            .field("confirmations", &self.confirmations)
             .finish()
     }
 }

@@ -59,6 +59,37 @@ fn getblock(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Res
     Ok(())
 }
 
+fn gettxn(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let hash_vec = hex::decode(invocation.get_field("hash").unwrap())?;
+    let guard = state.unwrap().lock().unwrap();
+    let state = &*guard;
+
+    let mut hash = [0 as u8; 32];
+    hash[32 - hash_vec.len()..].copy_from_slice(&hash_vec);
+
+    let orphan_opt = state.get_orphan_txn(hash);
+    if orphan_opt.is_some() {
+        println!("Transaction found in orphan pool: {:#?}", orphan_opt.unwrap());
+        return Ok(());
+    }
+
+    let pending_opt = state.get_pending_txn(hash);
+    if pending_opt.is_some() {
+        println!("Transaction found in pending pool: {:#?}", pending_opt.unwrap());
+        return Ok(());
+    }
+
+    let confirmed_opt = state.blockchain.find_txn(hash);
+    if confirmed_opt.is_some() {
+        println!("Transaction found in blockchain: {:#?}", confirmed_opt.unwrap());
+        return Ok(());
+    }
+
+    println!("Transaction not found");
+
+    Ok(())
+}
+
 fn blockchain_stats(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
@@ -221,6 +252,18 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         ],
         desc: String::from("Get the block with the given hash"),
     };
+    let gettxn_cmd: Command<&Mutex<State>> = Command {
+        processor: gettxn,
+        expected_fields: vec![
+            Field::new(
+                "hash",
+                FieldType::Pos(0),
+                "The hash of this transaction"
+            )
+        ],
+        flags: vec![],
+        desc: String::from("Get the transaction with the given hash")
+    };
     let blockchain_stats_cmd: Command<&Mutex<State>> = Command {
         processor: blockchain_stats,
         expected_fields: vec![],
@@ -270,6 +313,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
     command_map.insert(String::from("getpeerinfo"), getpeerinfo_cmd);
     command_map.insert(String::from("getknowninfo"), getknowninfo_cmd);
     command_map.insert(String::from("getblock"), getblock_cmd);
+    command_map.insert(String::from("gettxn"), gettxn_cmd);
     command_map.insert(String::from("blockchain-stats"), blockchain_stats_cmd);
     command_map.insert(String::from("balance-p2pkh"), balance_p2pkh_cmd);
     command_map.insert(String::from("send-coins-p2pkh"), send_coins_p2pkh_cmd);

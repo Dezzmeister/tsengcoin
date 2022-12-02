@@ -69,6 +69,12 @@ impl State {
         self.pending_txns.iter().find(|t| **t == txn).cloned()
     }
 
+    pub fn get_orphan_txn<T: PartialEq>(&self, txn: T) -> Option<Transaction>
+        where Transaction: PartialEq<T>
+    {
+        self.orphan_txns.iter().find(|t| **t == txn).cloned()
+    }
+
     pub fn get_pending_or_confirmed_txn(&self, txn: Hash256) -> Option<Transaction> {
         let pending = self.pending_txns.iter().find(|t| **t == txn);
         if pending.is_some() {
@@ -77,7 +83,7 @@ impl State {
 
         let block_txn_opt = self.blockchain.find_txn(txn);
         if block_txn_opt.is_some() {
-            return Some(block_txn_opt.unwrap().2);
+            return Some(block_txn_opt.unwrap().txn);
         }
 
         None

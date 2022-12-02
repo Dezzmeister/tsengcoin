@@ -16,6 +16,7 @@ pub enum MinerMessage {
     NewDifficulty(Hash256)
 }
 
+#[allow(unused_variables)]
 pub fn start_miner(state_mut: &Mutex<State>, miner_receiver: Receiver<MinerMessage>) {
     #[cfg(feature = "cuda_miner")]
     mine(state_mut, miner_receiver);

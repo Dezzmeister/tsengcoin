@@ -9,7 +9,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::{wallet::{Hash256, b58c_to_address}, hash::hash_sha256};
 
-use super::{transaction::{Transaction, make_coinbase_txn, UTXOPool, build_utxos_from_confirmed}, block_verify::verify_block, state::State, txn_verify::check_pending_and_orphans};
+use super::{transaction::{Transaction, make_coinbase_txn, UTXOPool, build_utxos_from_confirmed, ConfirmedTransaction}, block_verify::verify_block, state::State, txn_verify::check_pending_and_orphans};
 
 /// Max size of a block in bytes
 pub const MAX_BLOCK_SIZE: usize = 16384;
@@ -352,14 +352,20 @@ impl BlockchainDB {
     }
 
     /// Finds the given transaction in the entire blockchain. Returns the block containing the
-    /// transaction, the chain index of the block, and the transaction if found.
-    pub fn find_txn<'a>(&'a self, hash: Hash256) -> Option<(&'a Block, usize, Transaction)> {
-        for i in 0..self.blocks.len() {
+    /// transaction, the chain index of the block, the transaction, and the number of confirmations of
+    /// the transaction (if found).
+    pub fn find_txn<'a>(&'a self, hash: Hash256) -> Option<ConfirmedTransaction> {
+        for i in (0..self.blocks.len()).rev() {
             let block = &self.blocks[i];
             let txn_opt = block.get_txn(hash);
 
             if txn_opt.is_some() {
-                return Some((block, 0, txn_opt.unwrap()));
+                return Some(ConfirmedTransaction {
+                    block: block.header.hash,
+                    txn: txn_opt.unwrap(),
+                    chain_idx: 0,
+                    confirmations: self.blocks.len() - i,
+                });
             }
         }
 
@@ -369,9 +375,15 @@ impl BlockchainDB {
             for i in 0..fork_blocks.len() {
                 let block = &fork_blocks[i];
                 let txn_opt = block.get_txn(hash);
+                let confirmations = self.forks[chain_idx].prev_index + i;
 
                 if txn_opt.is_some() {
-                    return Some((block, chain_idx, txn_opt.unwrap()));
+                    return Some(ConfirmedTransaction {
+                        block: block.header.hash,
+                        txn: txn_opt.unwrap(),
+                        chain_idx,
+                        confirmations,
+                    });
                 }
             }
         }
