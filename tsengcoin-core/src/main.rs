@@ -1,4 +1,3 @@
-#![feature(thread_is_running)]
 pub mod v1;
 pub mod commands;
 

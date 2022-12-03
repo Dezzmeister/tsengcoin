@@ -218,7 +218,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
             },
             _ => {
                 // TODO: Remove node and try again
-                state.network.remove(*best_node);
+                state.network.remove(best_node.to_owned());
                 return Err("Peer node returned nonsense")?;
             }
         }
