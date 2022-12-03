@@ -195,6 +195,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
                                         // TODO: Remove peer for this nonsense. This really is nonsense because we checked earlier that
                                         // this chain of blocks is connected to the top of our main chain, so it would be the peer's
                                         // fault for inserting a disconnected block into the blocks it sends back.
+                                        
                                     }
                                 }
                             }
@@ -217,6 +218,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
             },
             _ => {
                 // TODO: Remove node and try again
+                state.network.remove(*best_node);
                 return Err("Peer node returned nonsense")?;
             }
         }

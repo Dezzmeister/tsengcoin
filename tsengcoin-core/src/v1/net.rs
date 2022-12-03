@@ -99,6 +99,13 @@ impl PartialEq for DistantNode {
         self.addr == other.addr
     }
 }
+
+impl PartialEq<Node> for DistantNode {
+    fn eq(&self, other: &Node) -> bool {
+        return self.addr == other.addr
+    }
+}
+
 impl PartialEq<SocketAddr> for &DistantNode {
     fn eq(&self, other: &SocketAddr) -> bool {
         self.addr == *other
