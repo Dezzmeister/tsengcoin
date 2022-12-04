@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 use std::error::Error;
+use std::process;
 
 pub struct Command<T> {
     pub processor: CommandProcessor<T>,
@@ -86,7 +87,12 @@ pub fn dispatch_command<T>(args: &Vec<String>, map: &CommandMap<T>, state: Optio
         return;
     }
 
+
     let cmd_name = &args[0];
+
+    if cmd_name == "quit" {
+        process::exit(0);
+    }
 
     if cmd_name == "help" {
         if args.len() < 2 {
