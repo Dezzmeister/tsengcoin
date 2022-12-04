@@ -1,0 +1,21 @@
+# Mining
+
+"Mining" is the process by which nodes propose blocks to be added to the blockchain. TsengCoin uses a proof of work algorithm, meaning that a miner must expend a great deal of computational power to prove that a block is valid. If a miner tries to propose an invalid block they will have wasted a lot of time and energy, so it is more beneficial to produce only valid blocks that will be accepted by the network. There is further incentive for miners to produce valid blocks because if they do, they will receive some TsengCoin in return.
+
+We use a single pass of SHA256 as our proof of work algorithm. To propose a new block, miners first group several transactions together and add a [coinbase](./Transactions.md#coinbase) transaction. The miner then computes the [Merkle root](./Blocks.md#merkle-root) of these transactions and puts it in the block header. The miner then adds a nonce (a "*n*umber only used _once_") to the header and computes the SHA256 hash of the header. If the hash is less than the network's difficulty target, then the miner has won the block and can propose it to the network. In most cases, the block will be unilaterally accepted by the network, provided that the miner has not created an invalid block or reported a block with a hash higher than the difficulty target. (In the rare case that two miners submit valid blocks at almost the same time, the network may [fork](./Blocks.md#forks).)
+
+## Difficulty
+
+The difficulty target is a 256-bit number, almost always with several leading bits set to zero. The miner must find a nonce that produces a SHA256 hash less than the difficulty target. For each leading bit set to zero, the number of nonces that the miner will need to try (on average) is approximately doubled. For example, if the difficulty is `0000000f00000000000000000000000000000000000000000000000000000000`, a miner will need to try about 286 million nonces on average before it finds one that produces a hash low enough.
+
+## Miner Reward
+
+Miners receive a fixed reward of 1000 TsengCoin plus the sum of transaction fees in a block. Each user transaction must provide a transaction fee of at least 1 TsengCoin. The fee is not included in the transaction's outputs; instead, it is taken to be the difference between the transaction's inputs and its outputs. When the miner groups transactions into a candidate block, it sums up the transaction fees and adds them to the fixed reward. It then creates a coinbase transaction in which it pays itself the total reward. If the miner wins the block, and if the block is accepted by the network, then the miner is free to spend the reward.
+
+## Optimizations
+
+This repo includes a mining kernel written for CUDA devices (in Rust). The kernel is written to be run on individual CUDA cores in an Nvidia GPU. Because miners need to try nonces as quickly as possible, and because different nonces can be tried at the same time, the GPU is perfect for this task. We can start up thousands of kernels on the GPU that each compute the hash for a different nonce. Then, on the client, we can search the hashes for a single one that satisfies the proof of work requirement. If we don't find one, we can just try more nonces until we do.
+
+The structure of a block header allows us to optimize the kernel code somewhat. Instead of computing the entire hash in the kernel, we can just compute the last part of the hash. This is because the SHA256 algorithm works by dividing the input data up into 512-bit blocks. Each block is hashed individually, and the hash variables after one block are used to initialize the hash variables for the next block. A block header has a fixed size such that it will be divided up into 3 chunks when hashed. The nonce is at the end of the block header, so when a miner builds a candidate block and tries many nonces, the first chunk and a half will always be the same. This means that we can hash the first chunk when we build the candidate block and pass the hash variables into the kernel as well as the first part of the second block. The GPU will then hash the next two chunks and produce the final hash.
+
+Currently the core client only supports mining on one GPU because none of us have more than one. A clear optimization would be to allow mining on multiple devices.

@@ -77,7 +77,7 @@ pub fn make_command_map<'a>() -> CommandMap<&'a Mutex<State>> {
             )
         ],
         flags: vec![],
-        desc: String::from("Make a merkle root from the given hashes")
+        desc: String::from("Make a Merkle root from the given hashes")
     };
     let print_blockchain_cmd: Command<&Mutex<State>> = Command {
         processor: print_blockchain,
