@@ -39,7 +39,7 @@ impl StdError for ErrorKind {
             ErrorKind::OrphanTxn(_) => "Orphan transaction in block",
             ErrorKind::InvalidCoinbase => "Invalid coinbase transaction",
             ErrorKind::InvalidCoinbaseAmount(_, _) => "Invalid coinbase transaction amount",
-            ErrorKind::InvalidMerkleRoot => "Invalid merkle root"
+            ErrorKind::InvalidMerkleRoot => "Invalid Merkle root"
         }
     }
 

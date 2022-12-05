@@ -583,7 +583,7 @@ pub fn genesis_block() -> Block {
 
     let txns = vec![coinbase];
 
-    // The merkle root in this case is just the coinbase hash but the function call
+    // The Merkle root in this case is just the coinbase hash but the function call
     // is included to make the meaning clear
     let merkle_root = make_merkle_root(&txns);
 
