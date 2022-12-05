@@ -11,5 +11,6 @@ pub mod block_verify_error;
 pub mod txn_verify;
 pub mod block_verify;
 pub mod chat;
+pub mod encrypted_msg;
 
 pub const VERSION: u32 = 1;

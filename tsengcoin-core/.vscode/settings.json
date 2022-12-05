@@ -1,5 +1,4 @@
 {
-  "workbench.colorTheme": "Dracula For Rust Theme",
   "editor.inlayHints.enabled": "offUnlessPressed",
   "rust-analyzer.cargo.features": ["debug", "cuda_miner"]
 }

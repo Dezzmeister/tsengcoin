@@ -9,7 +9,7 @@ use crate::wallet::{Hash256, Address};
 use super::{VERSION, state::State, block::Block};
 
 pub const BLOCK_REWARD: u64 = 1000;
-pub const MAX_META_LENGTH: usize = 256;
+pub const MAX_META_LENGTH: usize = 1024;
 /// Cannot send or receive more than 1bil TsengCoin at a time
 pub const MAX_TXN_AMOUNT: u64 = 1_000_000_000;
 /// Every transaction must give up at least 1 TsengCoin as a tx fee
@@ -654,4 +654,16 @@ pub fn make_single_p2pkh_txn(dest: Address, amount: u64, fee: u64, state: &State
         outputs: outputs.clone(),
         meta: String::from("")
     }, change, outputs))
+}
+
+/// Determines the address who created a transaction. Assumes the transaction is
+/// valid.
+pub fn get_p2pkh_sender(txn: &Transaction, state: &State) -> Option<Address> {
+    let input = &txn.inputs[0];
+    let input_hash = input.txn_hash;
+    let input_txn = state.get_pending_or_confirmed_txn(input_hash).unwrap();
+    let output = &input_txn.outputs[input.output_idx];
+    let code = &output.lock_script.code;
+
+    get_p2pkh_addr(code)
 }

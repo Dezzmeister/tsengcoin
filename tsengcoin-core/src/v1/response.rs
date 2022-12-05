@@ -4,9 +4,9 @@ use std::sync::Mutex;
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 
-use crate::{wallet::{Hash256}, v1::{chat::{make_chat_response_req, check_pending_dh}, request::send_new_txn}, gui::{GUIRequest, GUIResponse}};
+use crate::{wallet::{Hash256}, v1::{chat::{make_chat_response_req, check_pending_dh, make_enc_find_me_req}, request::send_new_txn, transaction::get_p2pkh_sender}, gui::{GUIRequest, GUIResponse}};
 
-use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block, chat::{decompose_chat_req, is_chat_req_to_me, is_chat_req}};
+use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block, chat::{decompose_chat_req, is_chat_req_to_me, is_chat_req}, encrypted_msg::{is_enc_req, is_enc_req_to_me, decompose_enc_req, handle_chain_request}};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
@@ -178,6 +178,7 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
         return Ok(());
     }
 
+    // The first thing we do is verify the transaction
     let verify_result = verify_transaction(data.clone(), state);
 
     let is_orphan = match verify_result {
@@ -195,19 +196,45 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
     };
 
     state.network.broadcast_msg(&Request::NewTxn(data.clone()));
-    
+
+    if is_enc_req(&data) && is_enc_req_to_me(&data, state) {
+        let enc_req = decompose_enc_req(&data).unwrap();
+        let sender = get_p2pkh_sender(&data, state).unwrap();
+        let chain_req = match state.chat.decrypt_from_sender(enc_req, sender) {
+            Ok(req) => req,
+            Err(err) => {
+                println!("Error decrypting chain request to us: {}", err);
+                return Ok(());
+            },
+        };
+
+        handle_chain_request(chain_req, sender, state)?;
+    }
 
     // Someone wants to chat with us; they initiated a Diffie-Hellman key exchange with
     // us and we can choose to respond
-    if is_chat_req(&data) && is_chat_req_to_me(&data, state.address) {
+    if is_chat_req(&data) && is_chat_req_to_me(&data, state) {
         // TODO: Banned address list
-        let (sender_pubkey, sender) = decompose_chat_req(&data).unwrap();
+        let sender_pubkey = decompose_chat_req(&data).unwrap();
+        let sender = get_p2pkh_sender(&data, state).unwrap();
         let sender_name = state.chat.get_name(sender);
 
-        let should_respond = check_pending_dh(sender_pubkey, sender, state);
+        let should_respond_dh = match check_pending_dh(sender_pubkey, sender, state) {
+            Ok(val) => val,
+            Err(err) => {
+                return Err(format!("Error handling Diffie-Hellman request: {}", err))?;
+            }
+        };
 
-        if !should_respond {
+        if !should_respond_dh {
+            // We now need to make a transaction with an encrypted request
             println!("Completed Diffie-Hellman key exchange with {}", sender_name);
+            println!("Sending encrypted \"find me\" request");
+            
+            let enc_req = make_enc_find_me_req(sender, state)?;
+
+            send_new_txn(enc_req, state)?;
+
             return Ok(());
         }
 
@@ -222,9 +249,7 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
             Ok(GUIResponse::ProposeConnection(was_accepted)) => was_accepted,
             _ => return Err("Error receving from GUI response channel")?
         };
-
-        let mut guard = state_mut.lock().unwrap();
-        let state = &mut *guard;
+        
 
         if !accept_request {
             println!("Rejected connection request by {}", sender_name);
@@ -233,6 +258,8 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
 
         println!("Accepted connection request from {}. Finishing Diffie-Hellman exchange", sender_name);
 
+        let mut guard = state_mut.lock().unwrap();
+        let state = &mut *guard;   
         let (response_req, _) = make_chat_response_req(&data, state)?;
         send_new_txn(response_req, state)?;
     }

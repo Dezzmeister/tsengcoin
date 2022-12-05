@@ -8,6 +8,7 @@ This project consists of several parts which each warrant their own documentatio
 - [Blocks](./docs/Blocks.md)
 - [Mining](./docs/Mining.md)
 - [TsengScript](./docs/TsengScript.md)
+- [Chain Requests](./docs/Chain-Requests.md)
 
 ## Building
 

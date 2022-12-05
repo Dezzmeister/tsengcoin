@@ -52,8 +52,8 @@ impl State {
             hashes_per_second: 0,
             chat: ChatState {
                 pending_dh: HashMap::new(),
-                completed_dh: HashMap::new(),
-                aliases: HashMap::new()
+                aliases: HashMap::new(),
+                keys: HashMap::new()
             },
             app,
             miner_channel: miner_sender,
