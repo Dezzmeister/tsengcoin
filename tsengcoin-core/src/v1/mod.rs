@@ -10,5 +10,6 @@ pub mod txn_verify_error;
 pub mod block_verify_error;
 pub mod txn_verify;
 pub mod block_verify;
+pub mod chat;
 
 pub const VERSION: u32 = 1;

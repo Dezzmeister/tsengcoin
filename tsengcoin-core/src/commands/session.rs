@@ -3,11 +3,12 @@ use std::sync::Mutex;
 
 use ring::signature::KeyPair;
 
+use crate::v1::chat::make_chat_req;
 use crate::v1::request::send_new_txn;
 use crate::v1::{VERSION};
 use crate::v1::transaction::{p2pkh_utxos_for_addr, make_p2pkh_lock, collect_enough_change, TxnOutput, UnsignedTransaction, sign_txn, make_p2pkh_unlock, TxnInput, UnhashedTransaction, hash_txn};
 use crate::v1::txn_verify::verify_transaction;
-use crate::wallet::b58c_to_address;
+use crate::wallet::{b58c_to_address, address_to_b58c};
 use crate::{command::{dispatch_command, CommandInvocation, Command, FieldType, Field, Flag}, v1::{state::State}};
 
 #[cfg(feature = "debug")]
@@ -221,6 +222,44 @@ fn hashes_per_sec(_invocation: &CommandInvocation, state: Option<&Mutex<State>>)
     Ok(())
 }
 
+fn connect_to(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let name = invocation.get_field("address").unwrap();
+    let req_amount = invocation.get_field("req-amount").unwrap().parse::<u64>()?;
+    let req_fee = invocation.get_field("fee").unwrap().parse::<u64>()?;
+    let mut guard = state.unwrap().lock().unwrap();
+    let state = &mut *guard;
+
+    let dest_address = state.chat.get_address(name)?;
+    let chat_req = make_chat_req(dest_address, req_amount, req_fee, state)?;
+    send_new_txn(chat_req, state)?;
+
+    Ok(())
+}
+
+fn alias(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let pkh = invocation.get_field("address").unwrap();
+    let name = invocation.get_field("name").unwrap();
+    let mut guard = state.unwrap().lock().unwrap();
+    let state = &mut *guard;
+
+    let address = b58c_to_address(pkh)?;
+
+    state.chat.aliases.insert(address, name);
+
+    Ok(())
+}
+
+fn get_aliases(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let mut guard = state.unwrap().lock().unwrap();
+    let state = &mut *guard;
+
+    for (addr, alias) in state.chat.aliases.iter() {
+        println!("{} -> {}", address_to_b58c(&addr.to_vec()), alias);
+    }
+
+    Ok(())
+}
+
 pub fn listen_for_commands(state_mut: &Mutex<State>) {
     let mut command_map = HashMap::new();
     let getpeerinfo_cmd: Command<&Mutex<State>> = Command {
@@ -309,6 +348,51 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         flags: vec![],
         desc: String::from("Get the hashrate of the miner, if it's running.")
     };
+    let connect_to_cmd: Command<&Mutex<State>> = Command {
+        processor: connect_to,
+        expected_fields: vec![
+            Field::new(
+                "address",
+                FieldType::Pos(0),
+                "The address you want to connect to, or the name if you used the alias command"
+            ),
+            Field::new(
+                "req-amount",
+                FieldType::Pos(1),
+                "Connection requests are transactions - you need to send some TsengCoin to the destination address"
+            ),
+            Field::new(
+                "fee",
+                FieldType::Pos(2),
+                "Transaction fee"
+            )
+        ],
+        flags: vec![],
+        desc: String::from("Initiate a request to connect to the node owning the given address and start an encrypted session")
+    };
+    let alias_cmd: Command<&Mutex<State>> = Command {
+        processor: alias,
+        expected_fields: vec![
+            Field::new(
+                "address",
+                FieldType::Pos(0),
+                "The address to give an alias to"
+            ),
+            Field::new(
+                "name",
+                FieldType::Pos(1),
+                "The name/alias for the address"
+            )
+        ],
+        flags: vec![],
+        desc: String::from("Give a name to an address whose owner you know")
+    };
+    let get_aliases_cmd: Command<&Mutex<State>> = Command {
+        processor: get_aliases,
+        expected_fields: vec![],
+        flags: vec![],
+        desc: String::from("List all aliases")
+    };
 
     command_map.insert(String::from("getpeerinfo"), getpeerinfo_cmd);
     command_map.insert(String::from("getknowninfo"), getknowninfo_cmd);
@@ -318,6 +402,9 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
     command_map.insert(String::from("balance-p2pkh"), balance_p2pkh_cmd);
     command_map.insert(String::from("send-coins-p2pkh"), send_coins_p2pkh_cmd);
     command_map.insert(String::from("hashes-per-sec"), hashes_per_sec_cmd);
+    command_map.insert(String::from("connect-to"), connect_to_cmd);
+    command_map.insert(String::from("alias"), alias_cmd);
+    command_map.insert(String::from("get-aliases"), get_aliases_cmd);
 
     // Include debug commands if the feature is enabled
     #[cfg(feature = "debug")]

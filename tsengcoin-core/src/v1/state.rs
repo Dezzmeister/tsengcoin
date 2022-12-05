@@ -1,10 +1,11 @@
-use std::{net::SocketAddr, fs, error::Error, sync::mpsc::{Sender, Receiver, channel}};
+use std::{net::SocketAddr, fs, error::Error, sync::mpsc::{Sender, Receiver, channel}, collections::HashMap};
 
 use ring::signature::{EcdsaKeyPair, KeyPair};
 
-use crate::wallet::{Address, address_from_public_key, Hash256};
+use crate::{wallet::{Address, address_from_public_key, Hash256}};
 
-use super::{net::Network, block::{BlockchainDB, genesis_block, Block, resolve_forks}, transaction::{Transaction, UTXOPool, TransactionIndex}, miners::api::MinerMessage};
+use super::{net::Network, block::{BlockchainDB, genesis_block, Block, resolve_forks}, transaction::{Transaction, UTXOPool, TransactionIndex}, miners::api::MinerMessage, chat::ChatState};
+use fltk::app::App;
 
 /// TODO: Implement blockchain DB in filesystem or at least have a feature to enable it so we don't have to
 /// download blocks every time
@@ -23,6 +24,8 @@ pub struct State {
     /// Valid transactions that reference a parent that does not exist.
     pub orphan_txns: Vec<Transaction>,
     pub hashes_per_second: usize,
+    pub chat: ChatState,
+    pub app: App,
     miner_channel: Sender<MinerMessage>
 }
 
@@ -30,7 +33,9 @@ impl State {
     pub fn new(addr_me: SocketAddr, keypair: EcdsaKeyPair) -> (Self, Receiver<MinerMessage>) {
         let address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
         let blockchain = load_blockchain_db();
-        let (sender, receiver) = channel();
+        let (miner_sender, miner_receiver) = channel();
+        
+        let app = App::default();
 
         (Self {
             local_addr_me: addr_me,
@@ -45,9 +50,15 @@ impl State {
             pending_txns: vec![],
             orphan_txns: vec![],
             hashes_per_second: 0,
-            miner_channel: sender,
+            chat: ChatState {
+                pending_dh: HashMap::new(),
+                completed_dh: HashMap::new(),
+                aliases: HashMap::new()
+            },
+            app,
+            miner_channel: miner_sender,
         },
-        receiver)
+        miner_receiver)
     }
 
     /// TODO: Save the blockchain to a file

@@ -617,3 +617,41 @@ pub fn compute_output_sum(txn: &Transaction) -> u64 {
 pub fn compute_fee(txn: &Transaction, state: &State) -> u64 {
     compute_input_sum(txn, state) - compute_output_sum(txn)
 }
+
+/// Make an unsigned P2PKH transaction with one intended recipient (besides change back)
+/// Returns the unsigned transaction, input UTXOS, and transaction outputs.
+pub fn make_single_p2pkh_txn(dest: Address, amount: u64, fee: u64, state: &State) -> Result<(UnsignedTransaction, Vec<UTXOWindow>, Vec<TxnOutput>), Box<dyn Error>> {
+    let required_input = amount + fee;
+
+    let change = match collect_enough_change(state, state.address, required_input) {
+        None => {
+            return Err("Not enough TsengCoin")?;
+        },
+        Some(utxos) => utxos
+    };
+
+    let actual_input = 
+        change
+            .iter()
+            .fold(0, |a, e| a + e.amount);
+
+    let lock_script = make_p2pkh_lock(&dest);
+    let mut outputs: Vec<TxnOutput> = vec![TxnOutput { amount, lock_script }];
+
+    let change_back = actual_input - required_input;
+
+    if change_back > 0 {
+        let my_lock_script = make_p2pkh_lock(&state.address);
+
+        outputs.push(TxnOutput {
+            amount: change_back,
+            lock_script: my_lock_script
+        });
+    }
+
+    Ok((UnsignedTransaction {
+        version: VERSION,
+        outputs: outputs.clone(),
+        meta: String::from("")
+    }, change, outputs))
+}

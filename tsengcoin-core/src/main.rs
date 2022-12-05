@@ -8,6 +8,8 @@ pub mod tsengscript_interpreter;
 pub mod script_error;
 pub mod difficulty;
 pub mod hash;
+pub mod gui;
+pub mod fltk_helpers;
 
 use std::{error::Error, env};
 
