@@ -9,7 +9,7 @@ pub mod difficulty;
 pub mod hash;
 pub mod banner;
 
-use std::{error::Error, io};
+use std::{error::Error, env};
 
 use banner::{BANNER};
 
@@ -19,17 +19,11 @@ use command::{dispatch_command};
 use commands::top_level::make_command_map;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // println!("{}", BANNER); -> Cool looking banner.
+    // println!("{}", BANNER); 
     let command_map = make_command_map();
-    loop {
-        println!("\nType 'help' to see a list of commands\n");
-        let mut buffer = String::new();
-        io::stdin().read_line(&mut buffer)?;
-        buffer.pop();
-        let str_array = buffer.split(" ").map(|s| s.to_string()).collect::<Vec<String>>();
-        dispatch_command(&str_array, &command_map, None);
-    }
+    let args: Vec<String> = env::args().collect();
     
+    dispatch_command(&args[1..].to_vec(), &command_map, None);
 
-    // Ok(())
+    Ok(())
 }

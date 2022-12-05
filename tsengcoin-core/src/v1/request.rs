@@ -128,6 +128,7 @@ pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), B
                 }
             },
             // Remove nodes that return nonsense
+            
             _ => state.network.remove(addr),
         }
     }
@@ -218,7 +219,6 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
             },
             _ => {
                 // TODO: Remove node and try again
-                state.network.remove(best_node.to_owned());
                 return Err("Peer node returned nonsense")?;
             }
         }
