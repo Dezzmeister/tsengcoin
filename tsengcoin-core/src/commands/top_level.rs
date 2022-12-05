@@ -1,9 +1,9 @@
-use std::{collections::HashMap, error::Error, net::{SocketAddr, IpAddr, Ipv4Addr}, sync::{Arc}, thread};
+use std::{collections::HashMap, error::Error, net::{SocketAddr, IpAddr, Ipv4Addr}, sync::{Arc, mpsc::channel}, thread};
 use std::sync::Mutex;
 
 use ring::signature::KeyPair;
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}, gui::gui_req_loop};
 use super::session::listen_for_commands;
 
 #[cfg(all(feature = "debug", feature = "cuda_miner"))]
@@ -107,10 +107,14 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 
     println!("Connecting to node at {} and starting bootstrap process", seed_addr);
 
+    let (gui_req_sender, gui_req_receiver) = channel();
+    let (gui_res_sender, gui_res_receiver) = channel();
+
     let (state, miner_receiver) = State::new(addr_me, keypair);
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
+    let state_arc_3 = Arc::clone(&state_arc);
 
     get_first_peers(seed_addr, &state_arc)?;
     discover(seed_addr, &state_arc)?;
@@ -118,24 +122,27 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 
     println!("Starting network listener thread");
     thread::Builder::new().name(String::from("network-listener")).spawn(move || {
-        listen_for_connections(addr_me, &state_arc_2).expect("Network listener thread crashed");
+        listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2).expect("Network listener thread crashed");
         advertise_self(&state_arc_2).expect("Failed to advertise self to network");
     }).unwrap();
 
     println!("Bootstrapping complete\nStarting worker threads");
 
     if with_miner {
-        let state_arc_3 = Arc::clone(&state_arc);
+        let state_arc_miner = Arc::clone(&state_arc);
 
         println!("Starting miner thread");
         thread::Builder::new().name(String::from("miner")).spawn(move || {
-            start_miner(&state_arc_3, miner_receiver);
+            start_miner(&state_arc_miner, miner_receiver);
         }).unwrap();
     }
 
-    println!("Type a command, or 'help' for a list of commands");
+    thread::Builder::new().name(String::from("command")).spawn(move || {
+        println!("Type a command, or 'help' for a list of commands");
+        listen_for_commands(&state_arc_3);
+    }).unwrap();
 
-    listen_for_commands(&state_arc);
+    gui_req_loop(gui_req_receiver, gui_res_sender, &state_arc);
 
     Ok(())
 }
@@ -154,30 +161,37 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
 
     let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
 
+    let (gui_req_sender, gui_req_receiver) = channel();
+    let (gui_res_sender, gui_res_receiver) = channel();
+
     let (state, miner_receiver) = State::new(addr_me, keypair);
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
+    let state_arc_3 = Arc::clone(&state_arc);
 
     println!("Skipping bootstrapping, because `start-seed` was used instead of `connect`. Run `connect` if you wish to connect to an existing TsengCoin network");
 
     println!("Starting network listener thread");
     thread::Builder::new().name(String::from("network-listener")).spawn(move || {
-        listen_for_connections(addr_me, &state_arc_2).expect("Network listener thread crashed");
+        listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2).expect("Network listener thread crashed");
     }).unwrap();
 
     if with_miner {
-        let state_arc_3 = Arc::clone(&state_arc);
+        let state_arc_miner = Arc::clone(&state_arc);
 
         println!("Starting miner thread");
         thread::Builder::new().name(String::from("miner")).spawn(move || {
-            start_miner(&state_arc_3, miner_receiver);
+            start_miner(&state_arc_miner, miner_receiver);
         }).unwrap();
     }
 
-    println!("Type a command, or 'help' for a list of commands");
+    thread::Builder::new().name(String::from("command")).spawn(move || {
+        println!("Type a command, or 'help' for a list of commands");
+        listen_for_commands(&state_arc_3);
+    }).unwrap();
 
-    listen_for_commands(&state_arc);
+    gui_req_loop(gui_req_receiver, gui_res_sender, &state_arc);
 
     Ok(())
 }

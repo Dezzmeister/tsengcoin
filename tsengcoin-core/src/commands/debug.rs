@@ -65,7 +65,7 @@ pub fn make_command_map<'a>() -> CommandMap<&'a Mutex<State>> {
         processor: hash_test,
         expected_fields: vec![],
         flags: vec![],
-        desc: String::from("hash test")
+        desc: String::from("Hash test")
     };
     let merkle_test_cmd: Command<&Mutex<State>> = Command {
         processor: merkle_test,

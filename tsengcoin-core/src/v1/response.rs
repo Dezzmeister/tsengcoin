@@ -1,12 +1,12 @@
-use std::{net::{TcpStream, SocketAddr}, error::Error};
+use std::{net::{TcpStream, SocketAddr}, error::Error, sync::mpsc::{Receiver, Sender}};
 use std::sync::Mutex;
 
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 
-use crate::wallet::Hash256;
+use crate::{wallet::{Hash256}, v1::{chat::{make_chat_response_req, check_pending_dh}, request::send_new_txn}, gui::{GUIRequest, GUIResponse}};
 
-use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block};
+use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block, chat::{decompose_chat_req, is_chat_req_to_me, is_chat_req}};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
@@ -32,12 +32,12 @@ pub enum GetBlocksRes {
     Blocks(Vec<Block>)
 }
 
-pub fn handle_request(req: Request, socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+pub fn handle_request(req: Request, socket: &TcpStream, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
     match req {
         Request::GetAddr(data) => handle_get_addr(data, socket, state_mut),
         Request::Advertise(data) => handle_advertise(data, socket, state_mut),
         Request::GetBlocks(data) => handle_get_blocks(data, socket, state_mut),
-        Request::NewTxn(data) => handle_new_txn(data, socket, state_mut),
+        Request::NewTxn(data) => handle_new_txn(data, socket, gui_req_channel, gui_res_channel, state_mut),
         Request::NewBlock(data) => handle_new_block(data, socket, state_mut)
     }
 }
@@ -169,7 +169,7 @@ fn handle_get_blocks(data: GetBlocksReq, socket: &TcpStream, state_mut: &Mutex<S
     Ok(())
 }
 
-pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
     let mut guard = state_mut.lock().unwrap();
     let state = &mut *guard;
 
@@ -194,7 +194,48 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, state_mut: &Mutex<
         }
     };
 
-    state.network.broadcast_msg(&Request::NewTxn(data));
+    state.network.broadcast_msg(&Request::NewTxn(data.clone()));
+    
+
+    // Someone wants to chat with us; they initiated a Diffie-Hellman key exchange with
+    // us and we can choose to respond
+    if is_chat_req(&data) && is_chat_req_to_me(&data, state.address) {
+        // TODO: Banned address list
+        let (sender_pubkey, sender) = decompose_chat_req(&data).unwrap();
+        let sender_name = state.chat.get_name(sender);
+
+        let should_respond = check_pending_dh(sender_pubkey, sender, state);
+
+        if !should_respond {
+            println!("Completed Diffie-Hellman key exchange with {}", sender_name);
+            return Ok(());
+        }
+
+        // Release the mutex while we wait for a response from the main thread so that we don't hold
+        // up the rest of the program
+        drop(state);
+        drop(guard);
+
+        gui_req_channel.send(GUIRequest::ProposeConnection(sender_name.clone()))?;
+
+        let accept_request = match gui_res_channel.recv() {
+            Ok(GUIResponse::ProposeConnection(was_accepted)) => was_accepted,
+            _ => return Err("Error receving from GUI response channel")?
+        };
+
+        let mut guard = state_mut.lock().unwrap();
+        let state = &mut *guard;
+
+        if !accept_request {
+            println!("Rejected connection request by {}", sender_name);
+            return Ok(());
+        }
+
+        println!("Accepted connection request from {}. Finishing Diffie-Hellman exchange", sender_name);
+
+        let (response_req, _) = make_chat_response_req(&data, state)?;
+        send_new_txn(response_req, state)?;
+    }
 
     Ok(())
 }
