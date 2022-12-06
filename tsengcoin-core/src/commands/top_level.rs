@@ -2,6 +2,7 @@ use std::{collections::HashMap, error::Error, net::{SocketAddr, IpAddr, Ipv4Addr
 use std::sync::Mutex;
 
 use ring::signature::KeyPair;
+use thread_priority::{ThreadPriority, ThreadBuilderExt};
 
 use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}, gui::gui_req_loop};
 use super::session::listen_for_commands;
@@ -132,9 +133,11 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
         let state_arc_miner = Arc::clone(&state_arc);
 
         println!("Starting miner thread");
-        thread::Builder::new().name(String::from("miner")).spawn(move || {
-            start_miner(&state_arc_miner, miner_receiver);
-        }).unwrap();
+        thread::Builder::new()
+            .name(String::from("miner"))
+            .spawn_with_priority(ThreadPriority::Max, move |_| {
+                start_miner(&state_arc_miner, miner_receiver);
+            }).unwrap();
     }
 
     thread::Builder::new().name(String::from("command")).spawn(move || {
@@ -181,9 +184,11 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
         let state_arc_miner = Arc::clone(&state_arc);
 
         println!("Starting miner thread");
-        thread::Builder::new().name(String::from("miner")).spawn(move || {
-            start_miner(&state_arc_miner, miner_receiver);
-        }).unwrap();
+        thread::Builder::new()
+            .name(String::from("miner"))
+            .spawn_with_priority(ThreadPriority::Max, move |_| {
+                start_miner(&state_arc_miner, miner_receiver);
+            }).unwrap();
     }
 
     thread::Builder::new().name(String::from("command")).spawn(move || {

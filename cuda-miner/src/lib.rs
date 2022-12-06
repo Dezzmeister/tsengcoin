@@ -167,18 +167,7 @@ pub unsafe fn finish_hash(nonces: &[u8], prev: &[u32; 11], hash_vars: &[u32; 8],
     schedule[1] = u32_at(nonces, t + 24);
     schedule[2] = u32_at(nonces, t + 28);
     schedule[3] = 0x8000_0000;
-    schedule[4] = 0;
-    schedule[5] = 0;
-    schedule[6] = 0;
-    schedule[7] = 0;
-    schedule[8] = 0;
-    schedule[9] = 0;
-    schedule[10] = 0;
-    schedule[11] = 0;
-    schedule[12] = 0;
-    schedule[13] = 0;
-    schedule[14] = 0;
-    
+    schedule[4..15].copy_from_slice(&[0; 11]);    
     schedule[15] = 0x0000_0460;
 
     a = hash[0];
@@ -231,23 +220,14 @@ pub unsafe fn finish_hash(nonces: &[u8], prev: &[u32; 11], hash_vars: &[u32; 8],
     hash[7] = hash[7].wrapping_add(h);
 
     // Get the hash variables out and "return" them
-
-    let h0 = u8s(hash[0]);
-    let h1 = u8s(hash[1]);
-    let h2 = u8s(hash[2]);
-    let h3 = u8s(hash[3]);
-    let h4 = u8s(hash[4]);
-    let h5 = u8s(hash[5]);
-    let h6 = u8s(hash[6]);
-    let h7 = u8s(hash[7]);
     
-    hashes.add(t).copy_from(h0.as_ptr(), 4);
-    hashes.add(t + 4).copy_from(h1.as_ptr(), 4);
-    hashes.add(t + 8).copy_from(h2.as_ptr(), 4);
-    hashes.add(t + 12).copy_from(h3.as_ptr(), 4);
-    hashes.add(t + 16).copy_from(h4.as_ptr(), 4);
-    hashes.add(t + 20).copy_from(h5.as_ptr(), 4);
-    hashes.add(t + 24).copy_from(h6.as_ptr(), 4);
-    hashes.add(t + 28).copy_from(h7.as_ptr(), 4);
+    hashes.add(t).copy_from(u8s(hash[0]).as_ptr(), 4);
+    hashes.add(t + 4).copy_from(u8s(hash[1]).as_ptr(), 4);
+    hashes.add(t + 8).copy_from(u8s(hash[2]).as_ptr(), 4);
+    hashes.add(t + 12).copy_from(u8s(hash[3]).as_ptr(), 4);
+    hashes.add(t + 16).copy_from(u8s(hash[4]).as_ptr(), 4);
+    hashes.add(t + 20).copy_from(u8s(hash[5]).as_ptr(), 4);
+    hashes.add(t + 24).copy_from(u8s(hash[6]).as_ptr(), 4);
+    hashes.add(t + 28).copy_from(u8s(hash[7]).as_ptr(), 4);
 }
 

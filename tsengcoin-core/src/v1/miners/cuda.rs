@@ -1,6 +1,7 @@
 use std::{sync::{Mutex, mpsc::{Receiver, TryRecvError}}};
-use chrono::{Utc, Duration};
+use chrono::{Utc, Duration, DateTime};
 use cust::prelude::*;
+use lazy_static::lazy_static;
 
 use crate::{v1::{state::State, transaction::{Transaction, compute_fee, make_coinbase_txn, coinbase_size_estimate}, block::{MAX_TRANSACTION_FIELD_SIZE, RawBlockHeader, make_merkle_root, Block, RawBlock, BlockHeader}, VERSION, block_verify::verify_block, request::Request}, wallet::Hash256, hash::{hash_chunks}};
 
@@ -8,8 +9,13 @@ use super::api::MinerMessage;
 
 static MINER_PTX: &str = include_str!("../../../kernels/miner.ptx");
 
-// 5 seconds
+/// Update the hashes per sec metric every 5 seconds
 const HASH_PER_SEC_INTERVAL: i64 = 5;
+
+lazy_static!{
+    /// Poll the MinerMessage receiver every 5 seconds
+    static ref POLL_INTERVAL: Duration = Duration::seconds(5);
+}
 
 struct CUDAContext {
     _context: Context,
@@ -40,33 +46,43 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
     let mut hash_vars_gpu = DeviceBuffer::from_slice(&hash_vars).expect("Failed to create device memory");
     let hashes_gpu = DeviceBuffer::from_slice(&hashes).expect("Failed to create device memory");
 
+    let mut now: DateTime<Utc>;
+
     let mut reset_time = Utc::now() + Duration::minutes(30);
 
     let mut print_time = Utc::now();
     let mut total_hashes: usize = 0;
 
+    let mut last_poll_time = Utc::now();
+
     loop {
-        let msg_result = receiver.try_recv();
-        match msg_result {
-            Err(TryRecvError::Disconnected) => {
-                println!("Stopping miner thread due to unexpected channel closing");
-                return;
-            },
-            Ok(MinerMessage::NewBlock(_, _)) |
-            Ok(MinerMessage::NewTransactions(_)) if raw_block.transactions.len() == 1 => {
-                // Force a reset by moving the reset time into the past
-                reset_time = Utc::now() - Duration::hours(1);
-                println!("Miner received instruction to reset");
-            },
-            Ok(MinerMessage::NewDifficulty(diff)) => {
-                reset_time = Utc::now() - Duration::hours(1);
-                println!("New difficulty target: {}", hex::encode(diff));
+        now = Utc::now();
+
+        if now - last_poll_time > *POLL_INTERVAL {
+            let msg_result = receiver.try_recv();
+            match msg_result {
+                Err(TryRecvError::Disconnected) => {
+                    println!("Stopping miner thread due to unexpected channel closing");
+                    return;
+                },
+                Ok(MinerMessage::NewBlock(_, _)) |
+                Ok(MinerMessage::NewTransactions(_)) if raw_block.transactions.len() == 1 => {
+                    // Force a reset by moving the reset time into the past
+                    reset_time = Utc::now() - Duration::hours(1);
+                    println!("Miner received instruction to reset");
+                },
+                Ok(MinerMessage::NewDifficulty(diff)) => {
+                    reset_time = Utc::now() - Duration::hours(1);
+                    println!("New difficulty target: {}", hex::encode(diff));
+                }
+                _ => (),
             }
-            _ => (),
+
+            last_poll_time = now;
         }
 
         // If we have passed the reset time, then generate a fresh candidate block
-        if reset_time < Utc::now() {
+        if reset_time < now {
             println!("Generating new candidate block");
             raw_block = make_raw_block(state_mut);
             raw_header_bytes = bincode::serialize(&raw_block.header).unwrap();
@@ -77,7 +93,7 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
             prev_gpu.copy_from(&schedule[0..11]).expect("Failed to copy from host to device memory");
             hash_vars_gpu.copy_from(&hash_vars).expect("Failed to copy from host to device memory");
 
-            reset_time = Utc::now() + Duration::minutes(30);
+            reset_time = now + Duration::minutes(30);
         }
 
         randomize(&mut nonces);
@@ -100,9 +116,9 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
 
         total_hashes += num_nonces;
 
-        if Utc::now() - print_time > Duration::seconds(HASH_PER_SEC_INTERVAL) {
+        if now - print_time > Duration::seconds(HASH_PER_SEC_INTERVAL) {
             state_mut.lock().unwrap().hashes_per_second = total_hashes / (HASH_PER_SEC_INTERVAL as usize);
-            print_time = Utc::now();
+            print_time = now;
             total_hashes = 0;
         }
 
@@ -139,10 +155,9 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                 }
                 // Force a reset! If we don't do this, we may start working on a fork block because we may loop
                 // again before the NewBlock message reaches us
-                reset_time = Utc::now() - Duration::hours(1);
+                reset_time = now - Duration::hours(1);
             }
         }
-
     }
 }
 
