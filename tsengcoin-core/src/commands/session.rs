@@ -260,6 +260,24 @@ fn get_aliases(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) ->
     Ok(())
 }
 
+fn set_exclusivity(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let exclusivity = invocation.get_field("exclusivity").unwrap().parse::<u64>().unwrap_or(u64::MAX);
+    let mut guard = state.unwrap().lock().unwrap();
+    let state = &mut *guard;
+
+    state.chat.exclusivity = exclusivity;
+
+    Ok(())
+}
+
+fn get_exclusivity(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let mut guard = state.unwrap().lock().unwrap();
+    let state = &mut *guard;
+
+    println!("{} TsengCoin", state.chat.exclusivity);
+    Ok(())
+}
+
 pub fn listen_for_commands(state_mut: &Mutex<State>) {
     let mut command_map = HashMap::new();
     let getpeerinfo_cmd: Command<&Mutex<State>> = Command {
@@ -393,6 +411,24 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         flags: vec![],
         desc: String::from("List all aliases")
     };
+    let set_exclusivity_cmd: Command<&Mutex<State>> = Command {
+        processor: set_exclusivity,
+        expected_fields: vec![Field::new(
+            "exclusivity",
+            FieldType::Pos(0),
+            "How many TsengCoins another address needs to pay for you to see their connection request. Set to -1 to block all incoming connection requests."
+        )],
+        flags: vec![],
+        desc: String::from(
+            "Set the amount of TsengCoin that an address needs to pay for you to see their direct connection requests."
+        )
+    };
+    let get_exclusivity_cmd: Command<&Mutex<State>> = Command {
+        processor: get_exclusivity,
+        expected_fields: vec![],
+        flags: vec![],
+        desc: String::from("Print your current exclusivity")
+    };
 
     command_map.insert(String::from("getpeerinfo"), getpeerinfo_cmd);
     command_map.insert(String::from("getknowninfo"), getknowninfo_cmd);
@@ -405,6 +441,8 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
     command_map.insert(String::from("connect-to"), connect_to_cmd);
     command_map.insert(String::from("alias"), alias_cmd);
     command_map.insert(String::from("get-aliases"), get_aliases_cmd);
+    command_map.insert(String::from("set-exclusivity"), set_exclusivity_cmd);
+    command_map.insert(String::from("get-exclusivity"), get_exclusivity_cmd);
 
     // Include debug commands if the feature is enabled
     #[cfg(feature = "debug")]

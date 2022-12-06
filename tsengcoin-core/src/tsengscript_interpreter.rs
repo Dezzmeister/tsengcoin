@@ -17,7 +17,7 @@ use crate::wallet::address_from_public_key;
 const MAX_SCRIPT_LEN: usize = 1024;
 
 /// Stack can have up to 2048 tokens
-/// This will allow TsengScript to support small, non-recursize procedures
+/// This will allow TsengScript to support small, non-recursive procedures
 /// in the future
 const MAX_STACK_SIZE: usize = 2048;
 

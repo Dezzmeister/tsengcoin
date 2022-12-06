@@ -18,6 +18,8 @@ pub struct ChatState {
     pub aliases: HashMap<Address, String>,
     /// Keys used for encrypting/decrypting messages after a handshake has been completed
     pub keys: HashMap<Address, Keypair>,
+    /// How many TsengCoins another address needs to pay for you to reciprocate their connection request
+    pub exclusivity: u64
 }
 
 pub struct Keypair {
@@ -296,7 +298,10 @@ pub fn is_chat_req_to_me(txn: &Transaction, state: &State) -> bool {
 
     match get_p2pkh_addr(&outputs[0].lock_script.code) {
         None => false,
-        Some(addr) => addr == state.address
+        Some(addr) => {
+            // Return false if the connection request does not provide enough TsengCoin
+            addr == state.address && &outputs[0].amount >= &state.chat.exclusivity
+        }
     }
 }
 

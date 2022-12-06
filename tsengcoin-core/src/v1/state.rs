@@ -53,7 +53,8 @@ impl State {
             chat: ChatState {
                 pending_dh: HashMap::new(),
                 aliases: HashMap::new(),
-                keys: HashMap::new()
+                keys: HashMap::new(),
+                exclusivity: 1
             },
             app,
             miner_channel: miner_sender,
