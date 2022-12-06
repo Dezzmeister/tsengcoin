@@ -1,4 +1,3 @@
-#![feature(thread_is_running)]
 pub mod v1;
 pub mod commands;
 
@@ -8,15 +7,23 @@ pub mod tsengscript_interpreter;
 pub mod script_error;
 pub mod difficulty;
 pub mod hash;
+
+pub mod banner;
 pub mod gui;
 pub mod fltk_helpers;
 
+
 use std::{error::Error, env};
+
+use banner::{BANNER};
+
+
 
 use command::{dispatch_command};
 use commands::top_level::make_command_map;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // println!("{}", BANNER); 
     let command_map = make_command_map();
     let args: Vec<String> = env::args().collect();
     

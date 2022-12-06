@@ -153,7 +153,8 @@ impl Block {
         return self.transactions;
     }
 
-    /// Like `to_txns` except it excludes the coinbase transaction.
+    
+      /// Like `to_txns` except it excludes the coinbase transaction.
     pub fn to_network_txns(self) -> Vec<Transaction> {
         return self.transactions[1..].try_into().unwrap();
     }

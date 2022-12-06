@@ -128,6 +128,7 @@ pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), B
                 }
             },
             // Remove nodes that return nonsense
+            
             _ => state.network.remove(addr),
         }
     }
@@ -195,6 +196,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
                                         // TODO: Remove peer for this nonsense. This really is nonsense because we checked earlier that
                                         // this chain of blocks is connected to the top of our main chain, so it would be the peer's
                                         // fault for inserting a disconnected block into the blocks it sends back.
+                                        
                                     }
                                 }
                             }
