@@ -202,14 +202,6 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
     // At this point, the block is valid. Now we just need to do some bookkeeping and update our UTXO
     // database, pending transaction pool, and orphan transaction pool.
 
-    /*
-    for utxo in &mut state.blockchain.utxo_pool.utxos {
-        if utxo.block.is_none() {
-            utxo.block = Some(block.header.hash);
-        }
-    }
-    */
-
     state.pending_txns = old_pending;
 
     pending_to_remove.sort();
