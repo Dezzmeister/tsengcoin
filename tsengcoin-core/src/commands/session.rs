@@ -126,12 +126,13 @@ fn balance_p2pkh(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) 
 }
 
 fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
-    let pkh = invocation.get_field("dest-address").unwrap();
     let amount = invocation.get_field("amount").unwrap().parse::<u64>().unwrap();
     let fee = invocation.get_field("fee").unwrap().parse::<u64>().unwrap();
     let show_structure = invocation.get_flag("show-structure");
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
+
+    let dest_address = state.chat.get_address(invocation.get_field("address").unwrap())?;
 
     let required_input = amount + fee;
 
@@ -148,7 +149,6 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
             .iter()
             .fold(0, |a, e| a + e.amount);
     
-    let dest_address = b58c_to_address(pkh)?;
     let lock_script = make_p2pkh_lock(&dest_address);
     let mut outputs: Vec<TxnOutput> = vec![TxnOutput { amount, lock_script }];
 
@@ -213,7 +213,7 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
     Ok(())
 }
 
-fn hashes_per_sec(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn hashrate(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
@@ -337,9 +337,9 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         processor: send_coins_p2pkh,
         expected_fields: vec![
             Field::new(
-                "dest-address",
+                "address",
                 FieldType::Pos(0),
-                "The address you want to send TsengCoin to"
+                "The address you want to send TsengCoin to. Can also be an alias"
             ),
             Field::new(
                 "amount",
@@ -360,8 +360,8 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         ],
         desc: String::from("Send a recipient TsengCoins in a P2PKH transaction. This is the most widely used style of transaction")
     };
-    let hashes_per_sec_cmd: Command<&Mutex<State>> = Command {
-        processor: hashes_per_sec,
+    let hashrate_cmd: Command<&Mutex<State>> = Command {
+        processor: hashrate,
         expected_fields: vec![],
         flags: vec![],
         desc: String::from("Get the hashrate of the miner, if it's running.")
@@ -437,7 +437,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
     command_map.insert(String::from("blockchain-stats"), blockchain_stats_cmd);
     command_map.insert(String::from("balance-p2pkh"), balance_p2pkh_cmd);
     command_map.insert(String::from("send-coins-p2pkh"), send_coins_p2pkh_cmd);
-    command_map.insert(String::from("hashes-per-sec"), hashes_per_sec_cmd);
+    command_map.insert(String::from("hashrate"), hashrate_cmd);
     command_map.insert(String::from("connect-to"), connect_to_cmd);
     command_map.insert(String::from("alias"), alias_cmd);
     command_map.insert(String::from("get-aliases"), get_aliases_cmd);

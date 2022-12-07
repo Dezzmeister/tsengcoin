@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use ring::signature::KeyPair;
 use thread_priority::{ThreadPriority, ThreadBuilderExt};
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}, gui::gui_req_loop};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag, Condition}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}, gui::gui_req_loop};
 use super::session::listen_for_commands;
 
 #[cfg(all(feature = "debug", feature = "cuda_miner"))]
@@ -94,7 +94,11 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     let seed_port = invocation.get_field("seed-port").unwrap().parse::<u16>().unwrap();
     let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
-    let wallet_password = invocation.get_field("wallet-password").unwrap();
+    let wallet_password = invocation
+        .get_field("wallet-password")
+        .unwrap_or(
+            fltk::dialog::password_default("Enter your wallet password", "").expect("Need to supply a password!")
+        );
     let with_miner = invocation.get_flag("with-miner");
 
     let keypair = load_keypair(&wallet_password, &wallet_path)?;
@@ -153,7 +157,11 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
-    let wallet_password = invocation.get_field("wallet-password").unwrap();
+    let wallet_password = invocation
+        .get_field("wallet-password")
+        .unwrap_or(
+            fltk::dialog::password_default("Enter your wallet password", "").expect("Need to supply a password!")
+        );
     let with_miner = invocation.get_flag("with-miner");
 
     let keypair = load_keypair(&wallet_password, &wallet_path)?;
@@ -306,10 +314,14 @@ pub fn make_command_map() -> CommandMap<()> {
                 FieldType::Pos(3),
                 "Path to your wallet file"
             ),
-            Field::new(
+            Field::new_condition(
                 "wallet-password",
                 FieldType::Spaces(4),
-                "Password to your wallet"
+                "Password to your wallet file",
+                Condition::new(
+                    "gui",
+                    "Set this flag to enter the password through a dialog box instead of passing it in as a command line argument."
+                )
             )
         ],
         flags: vec![
@@ -333,17 +345,21 @@ pub fn make_command_map() -> CommandMap<()> {
                 FieldType::Pos(1),
                 "Path to your wallet file"
             ),
-            Field::new(
+            Field::new_condition(
                 "wallet-password",
                 FieldType::Spaces(2),
-                "Password to your wallet file"
+                "Password to your wallet file",
+                Condition::new(
+                    "gui",
+                    "Set this flag to enter the password through a dialog box instead of passing it in as a command line argument."
+                )
             )
         ],
         flags: vec![
             Flag::new(
                 "with-miner",
                 "Set this flag if you want to mine TsengCoin in the background"
-            )
+            ),
         ],
         desc: String::from("Start as a full node without bootstrapping. The node will not attempt to connect to any network, and it will use whatever blockchain data it has locally.")
     };

@@ -13,6 +13,7 @@ pub struct Command<T> {
 /// and the state/context object
 pub type CommandProcessor<T> = fn (invocation: &CommandInvocation, state: Option<T>) -> Result<(), Box<dyn Error>>;
 pub type CommandMap<T> = HashMap<String, Command<T>>;
+
 pub struct CommandInvocation {
     /// The name of the command that was invoked
     pub name: String,
@@ -31,20 +32,12 @@ pub struct CommandInvocation {
     pub fields: HashMap<String, String>
 }
 
-impl CommandInvocation {
-    pub fn get_flag(&self, flag: &str) -> bool {
-        self.flags.contains(&flag.to_owned())
-    }
-
-    pub fn get_field(&self, field_name: &str) -> Option<String> {
-        self.fields.get(&field_name.to_owned()).cloned()
-    }
-}
-
 pub struct Field {
     pub name: String,
     pub field_type: FieldType,
     pub desc: String,
+    /// A condition can specify the name of a flag that can disable this field. If the flag is present, the field will not be required.
+    pub condition: Option<Condition>
 }
 
 #[derive(Clone)]
@@ -68,15 +61,53 @@ pub enum FieldType {
     Spaces(usize)
 }
 
+pub struct Condition {
+    pub disable_flag: String,
+    pub desc: String
+}
+
+impl CommandInvocation {
+    pub fn get_flag(&self, flag: &str) -> bool {
+        self.flags.contains(&flag.to_owned())
+    }
+
+    pub fn get_field(&self, field_name: &str) -> Option<String> {
+        self.fields.get(&field_name.to_owned()).cloned()
+    }
+}
+
 impl Field {
     pub fn new(name: &str, field_type: FieldType, desc: &str) -> Self {
-        Field { name: name.to_owned(), field_type, desc: desc.to_owned() }
+        Field {
+            name: name.to_owned(),
+            field_type,
+            desc: desc.to_owned(),
+            condition: None
+        }
+    }
+
+    pub fn new_condition(name: &str, field_type: FieldType, desc: &str, condition: Condition) -> Self {
+        Field {
+            name: name.to_owned(),
+            field_type,
+            desc: desc.to_owned(),
+            condition: Some(condition)
+        }
     }
 }
 
 impl Flag {
     pub fn new(name: &str, desc: &str) -> Self {
         Flag { name: name.to_owned(), desc: desc.to_owned() }
+    }
+}
+
+impl Condition {
+    pub fn new(flag: &str, desc: &str) -> Self {
+        Condition {
+            disable_flag: flag.to_owned(),
+            desc: desc.to_owned()
+        }
     }
 }
 
@@ -150,9 +181,17 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>) -> R
 
     // Process explicitly assigned fields first and recalculate positions for
     // positional fields
-    for Field {name, field_type, desc} in expected_fields {
+    for Field {name, field_type, desc, condition} in expected_fields {
         // Will only be Some if the field was assigned with `--name=value` syntax
         let var_field = assignments.get(name).cloned();
+
+        if condition.is_some() {
+            let cond = condition.as_ref().unwrap();
+
+            if flags.contains(&cond.disable_flag) {
+                continue;
+            }
+        }
 
         match (field_type, var_field) {
             (FieldType::Var, Some(var)) => drop(fields.insert(name.to_owned(), var)),
@@ -164,7 +203,7 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>) -> R
     }
 
     // Now go through the remaining ordered arguments with new positions and pick them out
-    for Field {name, field_type, desc: _} in pos_fields {
+    for Field {name, field_type, desc: _, condition: _} in pos_fields {
         match field_type {
             FieldType::Var => unreachable!(),
             FieldType::Pos(pos) if pos.to_owned() < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()].clone())),
@@ -219,6 +258,11 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
             _ => unreachable!()
         }
     });
+
+    let cond_fields = poses.iter()
+        .filter(|f| f.condition.is_some())
+        .map(|f| *f)
+        .collect::<Vec<&Field>>();
     
     let mut var_names: Vec<(String, String)> = 
         vars
@@ -235,7 +279,7 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
         println!("\nRequired arguments:\n");
 
         for field in poses {
-            println!("\t{}\n\t\t{}", field.name, field.desc);
+            println!("\t{}\n\t\t{}", field.name, field.desc)
         }
     } else {
         println!("\nThere are no required positional arguments");
@@ -254,6 +298,11 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
 
         for Flag { name, desc } in flags {
             println!("\t--{name}\n\t\t{desc}");
+        }
+
+        for field in cond_fields {
+            let cond = field.condition.as_ref().unwrap();
+            println!("\t--{} (instead of <{}>)\n\t\t{}", cond.disable_flag, field.name, cond.desc);
         }
     }
 }
@@ -275,18 +324,22 @@ fn make_syntax_string<T>(name: &String, command: &Command<T>) -> String {
         names.push(String::from(""));
     }
     
-    for Field { name, field_type, desc: _ } in &command.expected_fields {
+    for Field { name, field_type, desc: _, condition } in &command.expected_fields {
+        let format_name = match condition {
+            None => format!("<{}>", name),
+            Some(cond) => format!("<--{}|{}>", cond.disable_flag, name)
+        };
+
         match field_type {
-            FieldType::Pos(pos) => names[pos.to_owned()] = name.to_owned(),
-            FieldType::Spaces(pos) => names[pos.to_owned()] = name.to_owned(),
+            FieldType::Pos(pos) => names[pos.to_owned()] = format_name,
+            FieldType::Spaces(pos) => names[pos.to_owned()] = format_name,
             FieldType::Var => ()
         };
     }
 
     for name in names {
-        out.push_str(" <");
+        out.push_str(" ");
         out.push_str(&name);
-        out.push_str(">");
     }
 
     out
