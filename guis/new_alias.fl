@@ -1,0 +1,34 @@
+# data file for the Fltk User Interface Designer (fluid)
+version 1.0308
+header_name {.h}
+code_name {.cxx}
+class NewAlias {open
+} {
+  Function {NewAlias()} {open
+  } {
+    Fl_Window {} {
+      label {New Alias} open
+      xywh {2938 465 400 150} type Double modal visible
+    } {
+      Fl_Button {} {
+        label Save
+        xywh {325 120 64 20}
+      }
+      Fl_Input {} {
+        label Address
+        xywh {20 32 225 22} align 5
+      }
+      Fl_Input {} {
+        label Alias
+        xywh {20 81 225 22} align 5
+      }
+      Fl_Text_Display {} {selected
+        xywh {20 120 225 20} color 39 labeltype NO_LABEL textcolor 1
+      }
+      Fl_Button {} {
+        label Cancel
+        xywh {255 120 64 20}
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+# data file for the Fltk User Interface Designer (fluid)
+version 1.0308
+header_name {.h}
+code_name {.cxx}
+class NewChat {open
+} {
+  Function {NewChat()} {open
+  } {
+    Fl_Window {} {
+      label {New Chat} open
+      xywh {3000 266 400 200} type Double visible
+    } {
+      Fl_Input {} {
+        label {Address/Alias}
+        xywh {20 32 225 22} align 5
+      }
+      Fl_Value_Input {} {
+        label {Request Amount (TGC)}
+        xywh {20 82 80 22} align 5
+      }
+      Fl_Button {} {
+        label Send
+        xywh {325 170 64 20}
+      }
+      Fl_Button {} {
+        label Cancel
+        xywh {255 170 64 20}
+      }
+      Fl_Input {} {
+        label {First Message}
+        xywh {20 132 225 22} align 5
+      }
+    }
+  }
+}

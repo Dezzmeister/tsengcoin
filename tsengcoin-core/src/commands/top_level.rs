@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use ring::signature::KeyPair;
 use thread_priority::{ThreadPriority, ThreadBuilderExt};
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag, Condition}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}, gui::gui_req_loop};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag, Condition}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}, gui::{gui_req_loop, GUIState, main_gui_loop}};
 use super::session::listen_for_commands;
 
 #[cfg(all(feature = "debug", feature = "cuda_miner"))]
@@ -96,10 +96,15 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     let wallet_path = invocation.get_field("wallet-path").unwrap();
     let wallet_password = invocation
         .get_field("wallet-password")
-        .unwrap_or(
+        .unwrap_or_else(||
             fltk::dialog::password_default("Enter your wallet password", "").expect("Need to supply a password!")
         );
     let with_miner = invocation.get_flag("with-miner");
+    let with_gui = invocation.get_flag("gui");
+    let gui_state = match with_gui {
+        false => None,
+        true => Some(GUIState::new())
+    };
 
     let keypair = load_keypair(&wallet_password, &wallet_path)?;
     let address: Address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
@@ -115,7 +120,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     let (gui_req_sender, gui_req_receiver) = channel();
     let (gui_res_sender, gui_res_receiver) = channel();
 
-    let (state, miner_receiver) = State::new(addr_me, keypair);
+    let (state, miner_receiver) = State::new(addr_me, keypair, gui_req_sender.clone(), gui_state);
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -149,7 +154,11 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
         listen_for_commands(&state_arc_3);
     }).unwrap();
 
-    gui_req_loop(gui_req_receiver, gui_res_sender, &state_arc);
+    if with_gui {
+        main_gui_loop(state_arc);
+    } else {
+        gui_req_loop(gui_req_receiver, gui_res_sender);
+    }
 
     Ok(())
 }
@@ -159,10 +168,15 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     let wallet_path = invocation.get_field("wallet-path").unwrap();
     let wallet_password = invocation
         .get_field("wallet-password")
-        .unwrap_or(
+        .unwrap_or_else(||
             fltk::dialog::password_default("Enter your wallet password", "").expect("Need to supply a password!")
         );
     let with_miner = invocation.get_flag("with-miner");
+    let with_gui = invocation.get_flag("gui");
+    let gui_state = match with_gui {
+        false => None,
+        true => Some(GUIState::new())
+    };
 
     let keypair = load_keypair(&wallet_password, &wallet_path)?;
     let address: Address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
@@ -175,7 +189,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     let (gui_req_sender, gui_req_receiver) = channel();
     let (gui_res_sender, gui_res_receiver) = channel();
 
-    let (state, miner_receiver) = State::new(addr_me, keypair);
+    let (state, miner_receiver) = State::new(addr_me, keypair, gui_req_sender.clone(), gui_state);
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -204,7 +218,11 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
         listen_for_commands(&state_arc_3);
     }).unwrap();
 
-    gui_req_loop(gui_req_receiver, gui_res_sender, &state_arc);
+    if with_gui {
+        main_gui_loop(state_arc);
+    } else {
+        gui_req_loop(gui_req_receiver, gui_res_sender);
+    }
 
     Ok(())
 }
@@ -319,7 +337,7 @@ pub fn make_command_map() -> CommandMap<()> {
                 FieldType::Spaces(4),
                 "Password to your wallet file",
                 Condition::new(
-                    "gui",
+                    "pwgui",
                     "Set this flag to enter the password through a dialog box instead of passing it in as a command line argument."
                 )
             )
@@ -328,6 +346,10 @@ pub fn make_command_map() -> CommandMap<()> {
             Flag::new(
                 "with-miner",
                 "Set this flag if you want to mine TsengCoin in the background"
+            ),
+            Flag::new(
+                "gui",
+                "Set this flag to start the GUI application as well. You can still use TsengCoin from the console, but some GUI-only features will also be available."
             )
         ],
         desc: String::from("Connect to the TsengCoin network as a full node. Unless you're trying to do fancy stuff, this is probably the command you want. If you don't have a wallet yet, run `create-address` first.")
@@ -350,7 +372,7 @@ pub fn make_command_map() -> CommandMap<()> {
                 FieldType::Spaces(2),
                 "Password to your wallet file",
                 Condition::new(
-                    "gui",
+                    "pwgui",
                     "Set this flag to enter the password through a dialog box instead of passing it in as a command line argument."
                 )
             )
@@ -360,6 +382,10 @@ pub fn make_command_map() -> CommandMap<()> {
                 "with-miner",
                 "Set this flag if you want to mine TsengCoin in the background"
             ),
+            Flag::new(
+                "gui",
+                "Set this flag to start the GUI application as well. You can still use TsengCoin from the console, but some GUI-only features will also be available."
+            )
         ],
         desc: String::from("Start as a full node without bootstrapping. The node will not attempt to connect to any network, and it will use whatever blockchain data it has locally.")
     };

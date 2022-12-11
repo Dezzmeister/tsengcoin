@@ -1,12 +1,12 @@
-use std::{net::{TcpStream, SocketAddr}, error::Error, sync::mpsc::{Receiver, Sender}};
+use std::{net::{TcpStream, SocketAddr}, error::Error, sync::{mpsc::{Receiver, Sender}, Arc}};
 use std::sync::Mutex;
 
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 
-use crate::{wallet::{Hash256}, v1::{chat::{make_chat_response_req, check_pending_dh, make_enc_find_me_req}, request::send_new_txn, transaction::get_p2pkh_sender}, gui::{GUIRequest, GUIResponse}};
+use crate::{wallet::{Hash256}, v1::{chain_request::{make_dh_response_req, check_pending_dh, make_intent_req}, request::send_new_txn, transaction::get_p2pkh_sender}, gui::{GUIRequest, GUIResponse, is_connection_accepted}};
 
-use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block, chat::{decompose_chat_req, is_chat_req_to_me, is_chat_req}, encrypted_msg::{is_enc_req, is_enc_req_to_me, decompose_enc_req, handle_chain_request}};
+use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block, chain_request::{decompose_dh_req, is_dh_req_to_me, is_dh_req}, encrypted_msg::{is_enc_req, is_enc_req_to_me, decompose_enc_req, handle_chain_request}};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
@@ -32,13 +32,13 @@ pub enum GetBlocksRes {
     Blocks(Vec<Block>)
 }
 
-pub fn handle_request(req: Request, socket: &TcpStream, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+pub fn handle_request(req: Request, socket: &TcpStream, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_arc: &Arc<Mutex<State>>) -> Result<(), Box<dyn Error>> {
     match req {
-        Request::GetAddr(data) => handle_get_addr(data, socket, state_mut),
-        Request::Advertise(data) => handle_advertise(data, socket, state_mut),
-        Request::GetBlocks(data) => handle_get_blocks(data, socket, state_mut),
-        Request::NewTxn(data) => handle_new_txn(data, socket, gui_req_channel, gui_res_channel, state_mut),
-        Request::NewBlock(data) => handle_new_block(data, socket, state_mut)
+        Request::GetAddr(data) => handle_get_addr(data, socket, state_arc),
+        Request::Advertise(data) => handle_advertise(data, socket, state_arc),
+        Request::GetBlocks(data) => handle_get_blocks(data, socket, state_arc),
+        Request::NewTxn(data) => handle_new_txn(data, socket, gui_req_channel, gui_res_channel, state_arc),
+        Request::NewBlock(data) => handle_new_block(data, socket, state_arc)
     }
 }
 
@@ -169,8 +169,8 @@ fn handle_get_blocks(data: GetBlocksReq, socket: &TcpStream, state_mut: &Mutex<S
     Ok(())
 }
 
-pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
-    let mut guard = state_mut.lock().unwrap();
+pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_arc: &Arc<Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let mut guard = state_arc.lock().unwrap();
     let state = &mut *guard;
 
     // Don't propagate transactions we already have
@@ -200,7 +200,7 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
     if is_enc_req(&data) && is_enc_req_to_me(&data, state) {
         let enc_req = decompose_enc_req(&data).unwrap();
         let sender = get_p2pkh_sender(&data, state).unwrap();
-        let chain_req = match state.chat.decrypt_from_sender(enc_req, sender) {
+        let chain_req = match state.friends.decrypt_from_sender(enc_req, sender) {
             Ok(req) => req,
             Err(err) => {
                 println!("Error decrypting chain request to us: {}", err);
@@ -208,16 +208,16 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
             },
         };
 
-        handle_chain_request(chain_req, sender, state)?;
+        handle_chain_request(chain_req, sender, state, &state_arc)?;
     }
 
     // Someone wants to chat with us; they initiated a Diffie-Hellman key exchange with
     // us and we can choose to respond
-    if is_chat_req(&data) && is_chat_req_to_me(&data, state) {
+    if is_dh_req(&data) && is_dh_req_to_me(&data, state) {
         // TODO: Banned address list
-        let sender_pubkey = decompose_chat_req(&data).unwrap();
+        let sender_pubkey = decompose_dh_req(&data).unwrap();
         let sender = get_p2pkh_sender(&data, state).unwrap();
-        let sender_name = state.chat.get_name(sender);
+        let sender_name = state.friends.get_name(sender);
 
         let should_respond_dh = match check_pending_dh(sender_pubkey, sender, state) {
             Ok(val) => val,
@@ -229,27 +229,29 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
         if !should_respond_dh {
             // We now need to make a transaction with an encrypted request
             println!("Completed Diffie-Hellman key exchange with {}", sender_name);
-            println!("Sending encrypted \"find me\" request");
             
-            let enc_req = make_enc_find_me_req(sender, state)?;
+            match make_intent_req(sender, state)? {
+                Some(intent_req) => {
+                    send_new_txn(intent_req, state)?;
+                    println!("Sending encrypted request");
 
-            send_new_txn(enc_req, state)?;
+                },
+                None => {
+                    println!("You can now send chain requests to {}", sender_name);
+                }
+            };
 
             return Ok(());
         }
+
+        let has_gui = state.has_gui();
 
         // Release the mutex while we wait for a response from the main thread so that we don't hold
         // up the rest of the program
         drop(state);
         drop(guard);
 
-        gui_req_channel.send(GUIRequest::ProposeConnection(sender_name.clone()))?;
-
-        let accept_request = match gui_res_channel.recv() {
-            Ok(GUIResponse::ProposeConnection(was_accepted)) => was_accepted,
-            _ => return Err("Error receving from GUI response channel")?
-        };
-        
+        let accept_request = is_connection_accepted(sender_name.clone(), gui_req_channel, gui_res_channel, has_gui)?;
 
         if !accept_request {
             println!("Rejected connection request by {}", sender_name);
@@ -258,9 +260,9 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
 
         println!("Accepted connection request from {}. Finishing Diffie-Hellman exchange", sender_name);
 
-        let mut guard = state_mut.lock().unwrap();
+        let mut guard = state_arc.lock().unwrap();
         let state = &mut *guard;   
-        let (response_req, _) = make_chat_response_req(&data, state)?;
+        let (response_req, _) = make_dh_response_req(&data, state)?;
         send_new_txn(response_req, state)?;
     }
 

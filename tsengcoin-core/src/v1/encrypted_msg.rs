@@ -1,4 +1,4 @@
-use std::{error::Error, net::SocketAddr};
+use std::{error::Error, net::SocketAddr, sync::{Mutex, Arc}};
 
 use base58check::{ToBase58Check, FromBase58Check};
 use lazy_static::lazy_static;
@@ -6,18 +6,20 @@ use regex::Regex;
 use ring::{aead::{NonceSequence, Nonce, UnboundKey, AES_256_GCM, SealingKey, BoundKey, Aad, OpeningKey}, error::Unspecified};
 use serde::{Serialize, Deserialize};
 
-use crate::wallet::Address;
+use crate::{wallet::Address, views::{chat_box::ChatBoxUI, BasicVisible}, fltk_helpers::do_on_gui_thread};
 
-use super::{transaction::{Transaction, get_p2pkh_addr, TxnOutput, get_p2pkh_sender}, state::State};
+use super::{transaction::{Transaction, get_p2pkh_addr, TxnOutput, get_p2pkh_sender}, state::State, chain_request::{ChatMessage, ChatSession}};
 
 const B58C_VERSION_PREFIX: u8 = 0x07;
 
 /// An encrypted request made on the blockchain instead of over the network. The two parties must 
 /// perform a Diffie-Hellman key exchange first in order to determine a shared secret. The shared secret
 /// is used to encrypt and decrypt these requests.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum ChainRequest {
     FindMeAt(FindMeAtReq),
+    // TODO: Double ratchet!!
+    ChainChat(ChainChatReq)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -25,9 +27,14 @@ pub struct EncryptedChainRequest {
     pub ciphertext: Vec<u8>
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FindMeAtReq {
     pub addr: SocketAddr,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChainChatReq {
+    pub msg: String
 }
 
 pub struct NonceGen {
@@ -63,16 +70,16 @@ impl NonceSequence for NonceGen {
     }
 }
 
-pub fn handle_chain_request(req: ChainRequest, sender: Address, state: &mut State) -> Result<(), Box<dyn Error>> {
+pub fn handle_chain_request(req: ChainRequest, sender: Address, state: &mut State, state_arc: &Arc<Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    if !state.has_gui() && is_gui_only(&req) {
+        println!("Received and dropped a GUI-only chain request. Run with a main GUI to respond to these requests.");
+        return Ok(());
+    }
+    
     match req {
         ChainRequest::FindMeAt(req) => handle_find_me_at(req, sender, state),
+        ChainRequest::ChainChat(req) => handle_chain_chat(req, sender, state, state_arc)
     }
-}
-
-fn handle_find_me_at(req: FindMeAtReq, _sender: Address, _state: &mut State) -> Result<(), Box<dyn Error>> {
-    println!("Received \"FindMe\": {:#?}", req);
-
-    Ok(())
 }
 
 pub fn make_sealing_key(secret: &[u8; 32], nonce_seed: [u8; 12]) -> Result<SealingKey<NonceGen>, Box<dyn Error>> {
@@ -172,4 +179,101 @@ pub fn is_enc_req_to_me(txn: &Transaction, state: &State) -> bool {
         None => false,
         Some(addr) => addr == state.address
     }
+}
+
+fn handle_find_me_at(req: FindMeAtReq, _sender: Address, _state: &mut State) -> Result<(), Box<dyn Error>> {
+    println!("Received \"FindMe\": {:#?}", req);
+
+    Ok(())
+}
+
+fn handle_chain_chat(req: ChainChatReq, sender: Address, state: &mut State, state_arc: &Arc<Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let sender_name = state.friends.get_name(sender);
+    let chat_history = state.friends.chat_sessions.get_mut(&sender_name);
+    
+    match chat_history {
+        None => {
+            let state_arc_clone = Arc::clone(state_arc);
+            let sender_name_clone = sender_name.clone();
+            let req_msg_clone = req.msg.clone();
+
+            // Start a new chat window
+            let win = do_on_gui_thread(move || {
+                let mut chat_box = ChatBoxUI::new(sender, sender_name_clone.clone(), &state_arc_clone);
+                chat_box.show();
+                chat_box.add_message(&sender_name_clone, &req_msg_clone);
+
+                chat_box
+            })?;
+
+            state.friends.chat_sessions.insert(sender_name.clone(), ChatSession {
+                messages: vec![
+                    ChatMessage {
+                        sender: sender_name,
+                        message: req.msg
+                    }
+                ],
+                window: Some(win)
+            });
+        },
+        Some(session) => {
+            // Send a message to the window - create one if it doesn't exist
+            if session.window.is_none() {
+                let state_arc_clone = Arc::clone(state_arc);
+                let sender_name_clone = sender_name.clone();
+                let session_clone = session.clone();
+
+                // Create and show window
+                let window = do_on_gui_thread(move || {
+                    let mut chat_box = ChatBoxUI::new(sender, sender_name_clone.clone(), &state_arc_clone);
+                    chat_box.show();
+                    chat_box.set_messages(&session_clone);
+
+                    chat_box
+                })?;
+
+                session.window = Some(window.clone());
+            }
+
+            let state_arc_clone = Arc::clone(state_arc);
+            let sender_name_clone = sender_name.clone();
+            let session_clone = session.clone();
+            let req_msg_clone = req.msg.clone();
+
+            let mut window = session.window.as_ref().unwrap().clone();
+
+            // Add incoming message to window
+            let window = do_on_gui_thread(move || {
+                if window.shown() {
+                    window.add_message(&sender_name_clone, &req_msg_clone);
+
+                    window.clone()
+                } else {
+                    // if not shown - remake window
+                    window.hide();
+
+                    let mut chat_box = ChatBoxUI::new(sender, sender_name_clone.clone(), &state_arc_clone);
+                    chat_box.show();
+                    chat_box.set_messages(&session_clone);
+                    chat_box.add_message(&sender_name_clone, &req_msg_clone);
+
+                    chat_box
+                }
+            })?;
+
+            session.window = Some(window);
+
+            session.messages.push(ChatMessage {
+                sender: sender_name,
+                message: req.msg
+            });
+        }
+    }
+
+    Ok(())
+}
+
+
+pub fn is_gui_only(req: &ChainRequest) -> bool {
+    matches!(req, ChainRequest::ChainChat(_))
 }

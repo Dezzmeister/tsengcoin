@@ -3,7 +3,8 @@ use std::sync::Mutex;
 
 use ring::signature::KeyPair;
 
-use crate::v1::chat::make_chat_req;
+use crate::v1::chain_request::make_dh_connect_req;
+use crate::v1::encrypted_msg::{ChainRequest, ChainChatReq, is_gui_only};
 use crate::v1::request::send_new_txn;
 use crate::v1::{VERSION};
 use crate::v1::transaction::{p2pkh_utxos_for_addr, make_p2pkh_lock, collect_enough_change, TxnOutput, UnsignedTransaction, sign_txn, make_p2pkh_unlock, TxnInput, UnhashedTransaction, hash_txn};
@@ -132,7 +133,7 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
-    let dest_address = state.chat.get_address(invocation.get_field("address").unwrap())?;
+    let dest_address = state.friends.get_address(invocation.get_field("address").unwrap())?;
 
     let required_input = amount + fee;
 
@@ -229,9 +230,9 @@ fn connect_to(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> R
     let mut guard = state.unwrap().lock().unwrap();
     let state = &mut *guard;
 
-    let dest_address = state.chat.get_address(name)?;
-    let chat_req = make_chat_req(dest_address, req_amount, req_fee, state)?;
-    send_new_txn(chat_req, state)?;
+    let dest_address = state.friends.get_address(name)?;
+    let connect_req = make_dh_connect_req(dest_address, req_amount, req_fee, None, state)?;
+    send_new_txn(connect_req, state)?;
 
     Ok(())
 }
@@ -244,7 +245,7 @@ fn alias(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result
 
     let address = b58c_to_address(pkh)?;
 
-    state.chat.aliases.insert(address, name);
+    state.friends.aliases.insert(address, name);
 
     Ok(())
 }
@@ -253,7 +254,7 @@ fn get_aliases(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) ->
     let mut guard = state.unwrap().lock().unwrap();
     let state = &mut *guard;
 
-    for (addr, alias) in state.chat.aliases.iter() {
+    for (addr, alias) in state.friends.aliases.iter() {
         println!("{} -> {}", address_to_b58c(&addr.to_vec()), alias);
     }
 
@@ -265,7 +266,7 @@ fn set_exclusivity(invocation: &CommandInvocation, state: Option<&Mutex<State>>)
     let mut guard = state.unwrap().lock().unwrap();
     let state = &mut *guard;
 
-    state.chat.exclusivity = exclusivity;
+    state.friends.exclusivity = exclusivity;
 
     Ok(())
 }
@@ -274,7 +275,31 @@ fn get_exclusivity(_invocation: &CommandInvocation, state: Option<&Mutex<State>>
     let mut guard = state.unwrap().lock().unwrap();
     let state = &mut *guard;
 
-    println!("{} TsengCoin", state.chat.exclusivity);
+    println!("{} TsengCoin", state.friends.exclusivity);
+    Ok(())
+}
+
+fn start_chat(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+    let name = invocation.get_field("address").unwrap();
+    let req_amount = invocation.get_field("req-amount").unwrap().parse::<u64>()?;
+    let req_fee = invocation.get_field("fee").unwrap().parse::<u64>()?;
+    let message = invocation.get_field("message").unwrap();
+    let mut guard = state.unwrap().lock().unwrap();
+    let state = &mut *guard;
+
+    let dest_address = state.friends.get_address(name)?;
+    let intent = ChainRequest::ChainChat(ChainChatReq {
+        msg: message
+    });
+
+    if is_gui_only(&intent) && !state.has_gui() {
+        println!("Chat requests can only be made if TsengCoin is running with a GUI. See the `connect` command for more info.");
+        return Ok(());
+    }
+
+    let connect_req = make_dh_connect_req(dest_address, req_amount, req_fee, Some(intent), state)?;
+    send_new_txn(connect_req, state)?;
+
     Ok(())
 }
 
@@ -429,6 +454,35 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         flags: vec![],
         desc: String::from("Print your current exclusivity")
     };
+    let start_chat_cmd: Command<&Mutex<State>> = Command {
+        processor: start_chat,
+        expected_fields: vec![
+            Field::new(
+                "address",
+                FieldType::Pos(0),
+                "The address or alias to chat with"
+            ),
+            Field::new(
+                "req-amount",
+                FieldType::Pos(1),
+                "Chat requests are transactions - you need to send some TsengCoin to the destination address"
+            ),
+            Field::new(
+                "fee",
+                FieldType::Pos(2),
+                "Transaction fee"
+            ),
+            Field::new(
+                "message",
+                FieldType::Spaces(3),
+                "The initial message to send in the chat request"
+            )
+        ],
+        flags: vec![],
+        desc: String::from(
+            "Send a chain request to another address to start a chat session"
+        )
+    };
 
     command_map.insert(String::from("getpeerinfo"), getpeerinfo_cmd);
     command_map.insert(String::from("getknowninfo"), getknowninfo_cmd);
@@ -443,6 +497,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
     command_map.insert(String::from("get-aliases"), get_aliases_cmd);
     command_map.insert(String::from("set-exclusivity"), set_exclusivity_cmd);
     command_map.insert(String::from("get-exclusivity"), get_exclusivity_cmd);
+    command_map.insert(String::from("start-chat"), start_chat_cmd);
 
     // Include debug commands if the feature is enabled
     #[cfg(feature = "debug")]

@@ -1,6 +1,7 @@
 #![feature(thread_is_running)]
 pub mod v1;
 pub mod commands;
+pub mod views;
 
 pub mod command;
 pub mod wallet;

@@ -1,0 +1,51 @@
+# data file for the Fltk User Interface Designer (fluid)
+version 1.0308
+header_name {.h}
+code_name {.cxx}
+class MainUI {open
+} {
+  Function {MainUI()} {open
+  } {
+    Fl_Window {} {
+      label TsengCoin open selected
+      xywh {1387 243 400 300} type Double resizable visible
+    } {
+      Fl_Menu_Bar {} {
+        label menu open
+        xywh {0 0 400 20} labeltype NO_LABEL
+      } {
+        Submenu {} {
+          label File open
+          xywh {0 0 62 20} divider
+        } {
+          MenuItem {} {
+            label Settings
+            xywh {0 0 30 20}
+          }
+        }
+        Submenu {} {
+          label New open
+          xywh {0 0 62 20} divider
+        } {
+          MenuItem {} {
+            label Alias
+            xywh {0 0 30 20}
+          }
+          MenuItem {} {
+            label Chat
+            xywh {0 0 30 20}
+          }
+        }
+        Submenu {} {
+          label Help open
+          xywh {0 0 62 20} divider
+        } {
+          MenuItem {} {
+            label About
+            xywh {0 0 30 20}
+          }
+        }
+      }
+    }
+  }
+}

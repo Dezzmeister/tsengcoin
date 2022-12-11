@@ -1,0 +1,27 @@
+# data file for the Fltk User Interface Designer (fluid)
+version 1.0308
+header_name {.h}
+code_name {.cxx}
+class Settings {open
+} {
+  Function {Settings()} {open
+  } {
+    Fl_Window {} {
+      label Settings open selected
+      xywh {1223 145 400 150} type Double modal visible
+    } {
+      Fl_Button {} {
+        label Save
+        xywh {325 120 64 20}
+      }
+      Fl_Value_Input {} {
+        label {Chain Request Amount (TGC)}
+        xywh {20 32 80 22} align 5 maximum 1e+08
+      }
+      Fl_Value_Input {} {
+        label Exclusivity
+        xywh {20 81 80 22} align 5 minimum -1 maximum 1e+11
+      }
+    }
+  }
+}

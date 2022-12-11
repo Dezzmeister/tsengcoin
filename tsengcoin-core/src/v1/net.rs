@@ -1,4 +1,4 @@
-use std::{net::{SocketAddr, TcpStream, TcpListener}, error::Error, cmp::min, sync::mpsc::{Receiver, Sender}};
+use std::{net::{SocketAddr, TcpStream, TcpListener}, error::Error, cmp::min, sync::{mpsc::{Receiver, Sender}, Arc}};
 use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
@@ -269,7 +269,7 @@ impl Network {
     }
 }
 
-pub fn listen_for_connections(listen_addr: SocketAddr, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+pub fn listen_for_connections(listen_addr: SocketAddr, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_arc: &Arc<Mutex<State>>) -> Result<(), Box<dyn Error>> {
     let socket = TcpListener::bind(listen_addr)?;
 
     for stream in socket.incoming() {
@@ -278,7 +278,7 @@ pub fn listen_for_connections(listen_addr: SocketAddr, gui_req_channel: &Sender<
             Ok(conn) => {
                 let req: Request = bincode::deserialize_from(&conn)?;
 
-                handle_request(req, &conn, gui_req_channel, gui_res_channel, state_mut)?;
+                handle_request(req, &conn, gui_req_channel, gui_res_channel, state_arc)?;
             }
         }
     }
