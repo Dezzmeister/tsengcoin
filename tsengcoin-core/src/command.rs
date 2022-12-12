@@ -6,6 +6,7 @@ pub struct Command<T> {
     pub processor: CommandProcessor<T>,
     pub expected_fields: Vec<Field>,
     pub flags: Vec<Flag>,
+    pub optionals: Vec<VarField>,
     pub desc: String
 }
 
@@ -29,7 +30,10 @@ pub struct CommandInvocation {
 
     /// You probably want this: this contains values for expected args.
     /// Expected args are passed differently depending on their `FieldType`
-    pub fields: HashMap<String, String>
+    pub fields: HashMap<String, String>,
+
+    /// Optional arguments, set as variables
+    pub optionals: HashMap<String, String>
 }
 
 pub struct Field {
@@ -44,6 +48,13 @@ pub struct Field {
 pub struct Flag {
     pub name: String,
     pub desc: String,
+}
+
+#[derive(Clone)]
+pub struct VarField {
+    pub name: String,
+    pub desc: String,
+    pub placeholder: Option<String>,
 }
 
 #[derive(PartialEq)]
@@ -72,7 +83,11 @@ impl CommandInvocation {
     }
 
     pub fn get_field(&self, field_name: &str) -> Option<String> {
-        self.fields.get(&field_name.to_owned()).cloned()
+        self.fields.get(field_name).cloned()
+    }
+
+    pub fn get_optional(&self, field_name: &str) -> Option<String> {
+        self.optionals.get(field_name).cloned()
     }
 }
 
@@ -99,6 +114,24 @@ impl Field {
 impl Flag {
     pub fn new(name: &str, desc: &str) -> Self {
         Flag { name: name.to_owned(), desc: desc.to_owned() }
+    }
+}
+
+impl VarField {
+    pub fn new(name: &str, desc: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            desc: desc.to_owned(),
+            placeholder: None
+        }
+    }
+
+    pub fn new_placeholder(name: &str, desc: &str, placeholder: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            desc: desc.to_owned(),
+            placeholder: Some(placeholder.to_owned())
+        }
     }
 }
 
@@ -138,7 +171,7 @@ pub fn dispatch_command<T>(args: &Vec<String>, map: &CommandMap<T>, state: Optio
         }
     };
 
-    let invocation =  match decompose_raw_args(args, &command.expected_fields) {
+    let invocation =  match decompose_raw_args(args, &command.expected_fields, &command.optionals) {
         Err(err) => {
             eprintln!("Failed to decompose command: {}", err);
             return;
@@ -152,10 +185,11 @@ pub fn dispatch_command<T>(args: &Vec<String>, map: &CommandMap<T>, state: Optio
     }
 }
 
-fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>) -> Result<CommandInvocation, Box<dyn Error>> {
+fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>, possible_optionals: &Vec<VarField>) -> Result<CommandInvocation, Box<dyn Error>> {
     let cmd_name = &raw_args[0];
     let trimmed_args = &raw_args[1..];
     let mut assignments: HashMap<String, String> = HashMap::new();
+    let mut optionals: HashMap<String, String> = HashMap::new();
     let (specials, ordered_args): (Vec<String>, Vec<String>) = 
         trimmed_args
             .iter()
@@ -173,7 +207,11 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>) -> R
         let key = pair[0].to_owned();
         let value = pair[1].to_owned();
 
-        assignments.insert(key, value);
+        if possible_optionals.iter().any(|f| f.name == key) {
+            optionals.insert(key, value);
+        } else {
+            assignments.insert(key, value);
+        }
     }
 
     let mut fields: HashMap<String, String> = HashMap::new();
@@ -203,7 +241,7 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>) -> R
     }
 
     // Now go through the remaining ordered arguments with new positions and pick them out
-    for Field {name, field_type, desc: _, condition: _} in pos_fields {
+    for Field {name, field_type, ..} in pos_fields {
         match field_type {
             FieldType::Var => unreachable!(),
             FieldType::Pos(pos) if pos.to_owned() < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()].clone())),
@@ -217,7 +255,8 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>) -> R
         flags,
         args: ordered_args,
         vars: assignments,
-        fields
+        fields,
+        optionals
     };
 
     Ok(out)
@@ -305,6 +344,14 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
             println!("\t--{} (instead of <{}>)\n\t\t{}", cond.disable_flag, field.name, cond.desc);
         }
     }
+
+    if command.optionals.len() > 0 {
+        println!("\nOptional arguments:\n");
+
+        for VarField { name, desc, .. } in &command.optionals {
+            println!("\t--{name}\n\t\t{desc}");
+        }
+    }
 }
 
 fn make_syntax_string<T>(name: &String, command: &Command<T>) -> String {
@@ -317,6 +364,16 @@ fn make_syntax_string<T>(name: &String, command: &Command<T>) -> String {
             FieldType::Spaces(pos) => max_pos = max(max_pos, pos.to_owned().try_into().unwrap()),
             FieldType::Var => (),
         };
+    }
+
+    for field in &command.optionals {
+        let placeholder = match &field.placeholder {
+            None => String::from("value"),
+            Some(placeholder) => placeholder.clone()
+        };
+
+        out.push_str(" ");
+        out.push_str(&format!("[--{}={}]", field.name, placeholder));
     }
 
     let mut names: Vec<String> = Vec::with_capacity((max_pos + 1).try_into().unwrap());

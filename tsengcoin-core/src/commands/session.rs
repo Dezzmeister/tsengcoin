@@ -309,12 +309,14 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         processor: getpeerinfo,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Get info about direct peers with which this node communicates"),
     };
     let getknowninfo_cmd: Command<&Mutex<State>> = Command {
         processor: getknowninfo,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Get info about all nodes that this node knows about")
     };
     let getblock_cmd: Command<&Mutex<State>> = Command {
@@ -332,6 +334,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
                 "Show only the block header. This will omit the transactions and some other info."
             )
         ],
+        optionals: vec![],
         desc: String::from("Get the block with the given hash"),
     };
     let gettxn_cmd: Command<&Mutex<State>> = Command {
@@ -344,18 +347,21 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Get the transaction with the given hash")
     };
     let blockchain_stats_cmd: Command<&Mutex<State>> = Command {
         processor: blockchain_stats,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Get some info about the current state of the blockchain")
     };
     let balance_p2pkh_cmd: Command<&Mutex<State>> = Command {
         processor: balance_p2pkh,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Get the total unspent balance of your wallet. Balance may change if the network is forked.")
     };
     let send_coins_p2pkh_cmd: Command<&Mutex<State>> = Command {
@@ -383,12 +389,14 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
                 "Show the structure of the transaction after it is created"
             )
         ],
+        optionals: vec![],
         desc: String::from("Send a recipient TsengCoins in a P2PKH transaction. This is the most widely used style of transaction")
     };
     let hashrate_cmd: Command<&Mutex<State>> = Command {
         processor: hashrate,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Get the hashrate of the miner, if it's running.")
     };
     let connect_to_cmd: Command<&Mutex<State>> = Command {
@@ -411,6 +419,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Initiate a request to connect to the node owning the given address and start an encrypted session")
     };
     let alias_cmd: Command<&Mutex<State>> = Command {
@@ -428,12 +437,14 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Give a name to an address whose owner you know")
     };
     let get_aliases_cmd: Command<&Mutex<State>> = Command {
         processor: get_aliases,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("List all aliases")
     };
     let set_exclusivity_cmd: Command<&Mutex<State>> = Command {
@@ -444,6 +455,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
             "How many TsengCoins another address needs to pay for you to see their connection request. Set to -1 to block all incoming connection requests."
         )],
         flags: vec![],
+        optionals: vec![],
         desc: String::from(
             "Set the amount of TsengCoin that an address needs to pay for you to see their direct connection requests."
         )
@@ -452,6 +464,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         processor: get_exclusivity,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Print your current exclusivity")
     };
     let start_chat_cmd: Command<&Mutex<State>> = Command {
@@ -479,6 +492,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from(
             "Send a chain request to another address to start a chat session"
         )

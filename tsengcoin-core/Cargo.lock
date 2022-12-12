@@ -169,6 +169,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cl3"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e014961508a981c7ef28a65d0c965af7061593b4db50cff83952c62931b39ec"
+dependencies = [
+ "libc",
+ "opencl-sys",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -755,6 +765,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2839e79665f131bdb5782e51f2c6c9599c133c6098982a54c794358bf432529c"
 
 [[package]]
+name = "opencl-sys"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e75919008b8ed7ce9620e2b3580c648db40c7f564a368f271b2647145046d8ba"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "opencl3"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcf817a6312f2e87941d18b716f79892f217ab523102108a89c698822ab4ec4c"
+dependencies = [
+ "cl3",
+ "libc",
+]
+
+[[package]]
 name = "openssl-probe"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1272,6 +1301,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "nvvm",
+ "opencl3",
  "periodic",
  "rand",
  "rand_core 0.5.1",

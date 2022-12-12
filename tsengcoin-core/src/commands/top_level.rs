@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use ring::signature::KeyPair;
 use thread_priority::{ThreadPriority, ThreadBuilderExt};
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag, Condition}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::start_miner}}, gui::{gui_req_loop, GUIState, main_gui_loop}};
+use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag, Condition, VarField}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::{start_miner, num_miners, miners}}}, gui::{gui_req_loop, GUIState, main_gui_loop}};
 use super::session::listen_for_commands;
 
 #[cfg(all(feature = "debug", feature = "cuda_miner"))]
@@ -99,11 +99,25 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
         .unwrap_or_else(||
             fltk::dialog::password_default("Enter your wallet password", "").expect("Need to supply a password!")
         );
-    let with_miner = invocation.get_flag("with-miner");
     let with_gui = invocation.get_flag("gui");
     let gui_state = match with_gui {
         false => None,
         true => Some(GUIState::new())
+    };
+    let miner_names = miners();
+    let miner = match num_miners() {
+        0 => None,
+        1 if !invocation.get_flag("with-miner") => None,
+        1 => Some(miner_names[0].clone()),
+        _ if invocation.get_optional("miner").is_none() => None,
+        _ => {
+            let miner_name = invocation.get_optional("miner").unwrap();
+            if miner_names.contains(&miner_name) {
+                Some(miner_name)
+            } else {
+                return Err(format!("Miner {} is not recognized/supported", miner_name))?;
+            }
+        }
     };
 
     let keypair = load_keypair(&wallet_password, &wallet_path)?;
@@ -120,7 +134,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     let (gui_req_sender, gui_req_receiver) = channel();
     let (gui_res_sender, gui_res_receiver) = channel();
 
-    let (state, miner_receiver) = State::new(addr_me, keypair, gui_req_sender.clone(), gui_state);
+    let (state, miner_receiver) = State::new(addr_me, keypair, gui_req_sender.clone(), gui_state, miner.clone());
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -138,14 +152,14 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 
     println!("Bootstrapping complete\nStarting worker threads");
 
-    if with_miner {
+    if miner.is_some() {
         let state_arc_miner = Arc::clone(&state_arc);
 
         println!("Starting miner thread");
         thread::Builder::new()
             .name(String::from("miner"))
             .spawn_with_priority(ThreadPriority::Max, move |_| {
-                start_miner(&state_arc_miner, miner_receiver);
+                start_miner(&state_arc_miner, miner_receiver, &miner.unwrap());
             }).unwrap();
     }
 
@@ -171,11 +185,25 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
         .unwrap_or_else(||
             fltk::dialog::password_default("Enter your wallet password", "").expect("Need to supply a password!")
         );
-    let with_miner = invocation.get_flag("with-miner");
     let with_gui = invocation.get_flag("gui");
     let gui_state = match with_gui {
         false => None,
         true => Some(GUIState::new())
+    };
+    let miner_names = miners();
+    let miner = match num_miners() {
+        0 => None,
+        1 if !invocation.get_flag("with-miner") => None,
+        1 => Some(miner_names[0].clone()),
+        _ if invocation.get_optional("miner").is_none() => None,
+        _ => {
+            let miner_name = invocation.get_optional("miner").unwrap();
+            if miner_names.contains(&miner_name) {
+                Some(miner_name)
+            } else {
+                return Err(format!("Miner {} is not recognized/supported", miner_name))?;
+            }
+        }
     };
 
     let keypair = load_keypair(&wallet_password, &wallet_path)?;
@@ -189,7 +217,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     let (gui_req_sender, gui_req_receiver) = channel();
     let (gui_res_sender, gui_res_receiver) = channel();
 
-    let (state, miner_receiver) = State::new(addr_me, keypair, gui_req_sender.clone(), gui_state);
+    let (state, miner_receiver) = State::new(addr_me, keypair, gui_req_sender.clone(), gui_state, miner.clone());
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -202,14 +230,14 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
         listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2).expect("Network listener thread crashed");
     }).unwrap();
 
-    if with_miner {
+    if miner.is_some() {
         let state_arc_miner = Arc::clone(&state_arc);
 
         println!("Starting miner thread");
         thread::Builder::new()
             .name(String::from("miner"))
             .spawn_with_priority(ThreadPriority::Max, move |_| {
-                start_miner(&state_arc_miner, miner_receiver);
+                start_miner(&state_arc_miner, miner_receiver, &miner.unwrap());
             }).unwrap();
     }
 
@@ -241,12 +269,14 @@ pub fn make_command_map() -> CommandMap<()> {
         flags: vec![
             Flag::new("show-stack", "Print the contents of the stack when the program finishes")
         ],
+        optionals: vec![],
         desc: String::from("Run a TsengScript program and see the output and stack trace")
     };
     let random_test_address_hex_cmd: Command<()> = Command {
         processor: random_test_address,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Generate a random test TsengCoin address in hex")
     };
     let b58c_encode_cmd: Command<()> = Command {
@@ -259,6 +289,7 @@ pub fn make_command_map() -> CommandMap<()> {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Encode a hex string in base58check. The hex string is treated as a TsengCoin address")
     };
     let b58c_decode_cmd: Command<()> = Command {
@@ -271,6 +302,7 @@ pub fn make_command_map() -> CommandMap<()> {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Decode a base58check string to hex. The encoded string is treated as a TsengCoin address")
     };
     let create_address_cmd: Command<()> = Command {
@@ -288,6 +320,7 @@ pub fn make_command_map() -> CommandMap<()> {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from(
             "Create a TsengCoin address and lock it with a password. The file created by this command must be protected because it contains your private key"
         )
@@ -307,8 +340,34 @@ pub fn make_command_map() -> CommandMap<()> {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Load a keypair file locked with a password and get the address out of it. The file is encrypted so this only works if you have the right password")
     };
+
+    let num_miners = num_miners();
+    let mut connect_flags = vec![Flag::new(
+        "gui",
+        "Set this flag to start the GUI application as well. You can still use TsengCoin from the console, but some GUI-only features will also be available."
+    )];
+    let mut connect_optionals = vec![];
+    if num_miners == 1 {
+        connect_flags.append(&mut vec![
+            Flag::new(
+                "with-miner",
+                "Set this flag if you want to mine TsengCoin in the background"
+            )
+        ]);
+    } else if num_miners > 1 {
+        let miners = miners();
+        let placeholder = miner_placeholder(&miners);
+        let readable_miners = miner_list(&miners);
+        connect_optionals.push(VarField::new_placeholder(
+            "miner",
+            &format!("Set this to start the client with a miner. There are different mining kernels you can use, the options are{}", readable_miners),
+            &placeholder
+        ));
+    }
+
     let connect_cmd: Command<()> = Command {
         processor: connect,
         expected_fields: vec![
@@ -342,16 +401,8 @@ pub fn make_command_map() -> CommandMap<()> {
                 )
             )
         ],
-        flags: vec![
-            Flag::new(
-                "with-miner",
-                "Set this flag if you want to mine TsengCoin in the background"
-            ),
-            Flag::new(
-                "gui",
-                "Set this flag to start the GUI application as well. You can still use TsengCoin from the console, but some GUI-only features will also be available."
-            )
-        ],
+        flags: connect_flags.clone(),
+        optionals: connect_optionals.clone(),
         desc: String::from("Connect to the TsengCoin network as a full node. Unless you're trying to do fancy stuff, this is probably the command you want. If you don't have a wallet yet, run `create-address` first.")
     };
     let start_seed_cmd: Command<()> = Command {
@@ -377,16 +428,8 @@ pub fn make_command_map() -> CommandMap<()> {
                 )
             )
         ],
-        flags: vec![
-            Flag::new(
-                "with-miner",
-                "Set this flag if you want to mine TsengCoin in the background"
-            ),
-            Flag::new(
-                "gui",
-                "Set this flag to start the GUI application as well. You can still use TsengCoin from the console, but some GUI-only features will also be available."
-            )
-        ],
+        flags: connect_flags,
+        optionals: connect_optionals,
         desc: String::from("Start as a full node without bootstrapping. The node will not attempt to connect to any network, and it will use whatever blockchain data it has locally.")
     };
 
@@ -410,3 +453,28 @@ pub fn make_command_map() -> CommandMap<()> {
     out
 }
 
+fn miner_placeholder(miners: &Vec<String>) -> String {
+    let mut out = String::from("(");
+
+    for miner in miners {
+        out.push_str(miner);
+        out.push_str("|");
+    }
+
+    out.remove(out.len() - 1);
+    out.push_str(")");
+    out
+}
+
+fn miner_list(miners: &Vec<String>) -> String {
+    let mut out = String::from("");
+
+    for miner in miners {
+        out.push_str(" ");
+        out.push_str(&format!("\"{}\",", miner));
+    }
+
+    out.remove(out.len() - 1);
+
+    out
+}

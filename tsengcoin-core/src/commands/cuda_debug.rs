@@ -65,6 +65,7 @@ pub fn make_command_map<'a>() -> CommandMap<()> {
         processor: cuda_hash_test,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("CUDA hash test"),
     };
 

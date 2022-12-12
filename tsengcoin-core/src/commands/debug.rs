@@ -59,12 +59,14 @@ pub fn make_command_map<'a>() -> CommandMap<&'a Mutex<State>> {
         processor: get_utxos,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Print the UTXO database"),
     };
     let hash_test_cmd: Command<&Mutex<State>> = Command {
         processor: hash_test,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Hash test")
     };
     let merkle_test_cmd: Command<&Mutex<State>> = Command {
@@ -77,12 +79,14 @@ pub fn make_command_map<'a>() -> CommandMap<&'a Mutex<State>> {
             )
         ],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Make a Merkle root from the given hashes")
     };
     let print_blockchain_cmd: Command<&Mutex<State>> = Command {
         processor: print_blockchain,
         expected_fields: vec![],
         flags: vec![],
+        optionals: vec![],
         desc: String::from("Print the blockchain structure")
     };
 

@@ -29,12 +29,13 @@ pub struct State {
     pub friends: FriendState,
     pub gui_req_sender: Sender<GUIRequest>,
     pub gui: Option<GUIState>,
+    pub miner: Option<String>,
 
     miner_channel: Sender<MinerMessage>
 }
 
 impl State {
-    pub fn new<'a>(addr_me: SocketAddr, keypair: EcdsaKeyPair, gui_req_sender: Sender<GUIRequest>, gui: Option<GUIState>) -> (Self, Receiver<MinerMessage>) {
+    pub fn new<'a>(addr_me: SocketAddr, keypair: EcdsaKeyPair, gui_req_sender: Sender<GUIRequest>, gui: Option<GUIState>, miner: Option<String>) -> (Self, Receiver<MinerMessage>) {
         let address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
         let blockchain = load_blockchain_db();
         let (miner_sender, miner_receiver) = channel();
@@ -63,6 +64,7 @@ impl State {
             },
             gui_req_sender,
             gui,
+            miner,
             miner_channel: miner_sender,
         },
         miner_receiver)

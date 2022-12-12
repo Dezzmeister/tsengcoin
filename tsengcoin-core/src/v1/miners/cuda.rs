@@ -30,7 +30,7 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
     let (grid_size, block_size) = kernel.suggested_launch_configuration(0, 0.into()).expect("Unable to determine launch config");
     let num_nonces: usize = (grid_size * block_size).try_into().unwrap();
 
-    println!("Running miner kernel with grid size {}, block size {}, and {} nonces per round", grid_size, block_size, num_nonces);
+    println!("Running CUDA miner kernel with grid size {}, block size {}, and {} nonces per round", grid_size, block_size, num_nonces);
     let mut raw_block = make_raw_block(state_mut);
 
     println!("Difficulty target is {}", hex::encode(raw_block.header.difficulty_target));

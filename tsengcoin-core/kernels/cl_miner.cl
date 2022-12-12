@@ -1,5 +1,5 @@
 
-const unsigned K[64] = {
+__constant uint K[64] = {
     0b01000010100010100010111110011000,
     0b01110001001101110100010010010001,
     0b10110101110000001111101111001111,
@@ -66,13 +66,178 @@ const unsigned K[64] = {
     0b11000110011100010111100011110010,
 };
 
+#define memcpy(src, dest, n) for (size_t i = 0; i < (n); i++) { dest[i] = src[i]; }
+
+uint uint_at(__constant const uchar * chars, const size_t idx) {
+    return 
+        ((uint)(chars[idx]) << 24) |
+        ((uint)(chars[idx + 1]) << 16) |
+        ((uint)(chars[idx + 2]) << 8) |
+        (uint)(chars[idx]);
+}
+
+void copy_hash_out(__private uint * hash, __global uchar * hashes, size_t offset) {
+    uint n;
+    uchar u0, u1, u2, u3;
+
+    for (size_t i = 0; i < 8; i++) {
+        n = hash[i];
+        u0 = (uchar)((n & 0xFF000000) >> 24);
+        u1 = (uchar)((n & 0x00FF0000) >> 16);
+        u2 = (uchar)((n & 0x0000FF00) >> 8);
+        u3 = (uchar)(n & 0x000000FF);
+
+        hashes[(i * 4) + offset] = u0;
+        hashes[(i * 4) + 1 + offset] = u1;
+        hashes[(i * 4) + 2 + offset] = u2;
+        hashes[(i * 4) + 3 + offset] = u3;
+    }
+}
+
 __kernel void finish_hash(
-    __global const char *nonces,
-    __global const unsigned *prev,
-    __global const uint8 *hash_vars,
-    __global char *hashes
+    __constant const uchar * nonces,
+    __constant const uint * prev,
+    __constant const uint * hash_vars,
+    __global uchar * hashes
 ) {
-    const int idx = get_global_id(0);
-    const unsigned schedule[64] = { 0 };
-        
+    const size_t idx = get_global_id(0);
+    uint schedule[64] = { 0 };
+    uint hash[8];
+
+    memcpy(hash_vars, hash, 8 * sizeof(uint));
+
+    const size_t t = idx * 32;
+    memcpy(prev, schedule, 11 * sizeof(uint));
+    schedule[11] = uint_at(nonces, t);
+    schedule[12] = uint_at(nonces, t + 4);
+    schedule[13] = uint_at(nonces, t + 8);
+    schedule[14] = uint_at(nonces, t + 12);
+    schedule[15] = uint_at(nonces, t + 16);
+
+    uint a = hash[0];
+    uint b = hash[1];
+    uint c = hash[2];
+    uint d = hash[3];
+    uint e = hash[4];
+    uint f = hash[5];
+    uint g = hash[6];
+    uint h = hash[7];
+    
+    uint w0;
+    uint w9;
+    uint w1;
+    uint s0;
+    uint w14;
+    uint s1;
+
+    uint majority;
+    uint choice;
+    uint temp2;
+    uint temp1;
+
+    for (size_t j = 0; j < 48; j++) {
+        w0 = schedule[j];
+        w9 = schedule[j + 9];
+        w1 = schedule[j + 1];
+        s0 = rotate(w1, (uint)25) ^ rotate(w1, (uint)14) ^ (w1 >> 3);
+        w14 = schedule[j + 14];
+        s1 = rotate(w14, (uint)15) ^ rotate(w14, (uint)13) ^ (w14 >> 10);
+
+        // Implementation defined
+        schedule[j + 16] = w0 + s0 + w9 + s1;
+    }
+
+    for (size_t j = 0; j < 64; j++) {
+        majority = (a & b) ^ (a & c) ^ (b & c);
+        s0 = rotate(a, (uint)30) ^ rotate(a, (uint)19) ^ rotate(a, (uint)10);
+        choice = (e & f) ^ ((~e) & g);
+        s1 = rotate(e, (uint)26) ^ rotate(e, (uint)21) ^ rotate(e, (uint)7);
+        temp2 = s0 + majority;
+        temp1 = h + s1 + choice + K[j] + schedule[j];
+
+        h = g;
+        g = f;
+        f = e;
+        e = d + temp1;
+        d = c;
+        c = b;
+        b = a;
+        a = temp1 + temp2;
+    }
+
+    hash[0] += a;
+    hash[1] += b;
+    hash[2] += c;
+    hash[3] += d;
+    hash[4] += e;
+    hash[5] += f;
+    hash[6] += g;
+    hash[7] += h;
+
+    // Hash next block
+    schedule[0] = uint_at(nonces, t + 20);
+    schedule[1] = uint_at(nonces, t + 24);
+    schedule[2] = uint_at(nonces, t + 28);
+    schedule[3] = 0x80000000;
+    schedule[4] = 0;
+    schedule[5] = 0;
+    schedule[6] = 0;
+    schedule[7] = 0;
+    schedule[8] = 0;
+    schedule[9] = 0;
+    schedule[10] = 0;
+    schedule[11] = 0;
+    schedule[12] = 0;
+    schedule[13] = 0;
+    schedule[14] = 0;
+    schedule[15] = 0x00000460;
+
+    a = hash[0];
+    b = hash[1];
+    c = hash[2];
+    d = hash[3];
+    e = hash[4];
+    f = hash[5];
+    g = hash[6];
+    h = hash[7];
+
+    for (size_t j = 0; j < 48; j++) {
+        w0 = schedule[j];
+        w9 = schedule[j + 9];
+        w1 = schedule[j + 1];
+        s0 = rotate(w1, (uint)25) ^ rotate(w1, (uint)14) ^ (w1 >> 3);
+        w14 = schedule[j + 14];
+        s1 = rotate(w14, (uint)15) ^ rotate(w14, (uint)13) ^ (w14 >> 10);
+
+        schedule[j + 16] = w0 + s0 + w9 + s1;
+    }
+
+    for (size_t j = 0; j < 64; j++) {
+        majority = (a & b) ^ (a & c) ^ (b & c);
+        s0 = rotate(a, (uint)30) ^ rotate(a, (uint)19) ^ rotate(a, (uint)10);
+        choice = (e & f) ^ ((~e) & g);
+        s1 = rotate(e, (uint)26) ^ rotate(e, (uint)21) ^ rotate(e, (uint)7);
+        temp2 = s0 + majority;
+        temp1 = h + s1 + choice + K[j] + schedule[j];
+
+        h = g;
+        g = f;
+        f = e;
+        e = d + temp1;
+        d = c;
+        c = b;
+        b = a;
+        a = temp1 + temp2;
+    }
+
+    hash[0] += a;
+    hash[1] += b;
+    hash[2] += c;
+    hash[3] += d;
+    hash[4] += e;
+    hash[5] += f;
+    hash[6] += g;
+    hash[7] += h;
+
+    copy_hash_out(hash, hashes, t);
 }

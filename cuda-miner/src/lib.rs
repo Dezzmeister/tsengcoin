@@ -123,24 +123,36 @@ pub unsafe fn finish_hash(nonces: &[u8], prev: &[u32; 11], hash_vars: &[u32; 8],
 
     // Perform the first round of hashing
 
+    let mut w0: u32;
+    let mut w9: u32;
+    let mut w1: u32;
+    let mut s0: u32;
+    let mut w14: u32;
+    let mut s1: u32;
+
+    let mut majority: u32;
+    let mut choice: u32;
+    let mut temp2: u32;
+    let mut temp1: u32;
+
     for j in 0..48 {
-        let w0 = schedule[j];
-        let w9 = schedule[j + 9];
-        let w1 = schedule[j + 1];
-        let s0 = w1.rotate_right(7) ^ w1.rotate_right(18) ^ (w1 >> 3);
-        let w14 = schedule[j + 14];
-        let s1 = w14.rotate_right(17) ^ w14.rotate_right(19) ^ (w14 >> 10);
+        w0 = schedule[j];
+        w9 = schedule[j + 9];
+        w1 = schedule[j + 1];
+        s0 = w1.rotate_right(7) ^ w1.rotate_right(18) ^ (w1 >> 3);
+        w14 = schedule[j + 14];
+        s1 = w14.rotate_right(17) ^ w14.rotate_right(19) ^ (w14 >> 10);
 
         schedule[j + 16] = w0.wrapping_add(s0).wrapping_add(w9).wrapping_add(s1);
     }
 
     for j in 0..64 {
-        let majority = (a & b) ^ (a & c) ^ (b & c);
-        let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-        let choice = (e & f) ^ ((!e) & g);
-        let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-        let temp2 = s0.wrapping_add(majority);
-        let temp1 = h.wrapping_add(s1).wrapping_add(choice).wrapping_add(K[j]).wrapping_add(schedule[j]);
+        majority = (a & b) ^ (a & c) ^ (b & c);
+        s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+        choice = (e & f) ^ ((!e) & g);
+        s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+        temp2 = s0.wrapping_add(majority);
+        temp1 = h.wrapping_add(s1).wrapping_add(choice).wrapping_add(K[j]).wrapping_add(schedule[j]);
 
         h = g;
         g = f;
@@ -182,23 +194,23 @@ pub unsafe fn finish_hash(nonces: &[u8], prev: &[u32; 11], hash_vars: &[u32; 8],
     // Perform the second round of hashing
 
     for j in 0..48 {
-        let w0 = schedule[j];
-        let w9 = schedule[j + 9];
-        let w1 = schedule[j + 1];
-        let s0 = w1.rotate_right(7) ^ w1.rotate_right(18) ^ (w1 >> 3);
-        let w14 = schedule[j + 14];
-        let s1 = w14.rotate_right(17) ^ w14.rotate_right(19) ^ (w14 >> 10);
+        w0 = schedule[j];
+        w9 = schedule[j + 9];
+        w1 = schedule[j + 1];
+        s0 = w1.rotate_right(7) ^ w1.rotate_right(18) ^ (w1 >> 3);
+        w14 = schedule[j + 14];
+        s1 = w14.rotate_right(17) ^ w14.rotate_right(19) ^ (w14 >> 10);
 
         schedule[j + 16] = w0.wrapping_add(s0).wrapping_add(w9).wrapping_add(s1);
     }
 
     for j in 0..64 {
-        let majority = (a & b) ^ (a & c) ^ (b & c);
-        let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-        let choice = (e & f) ^ ((!e) & g);
-        let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-        let temp2 = s0.wrapping_add(majority);
-        let temp1 = h.wrapping_add(s1).wrapping_add(choice).wrapping_add(K[j]).wrapping_add(schedule[j]);
+        majority = (a & b) ^ (a & c) ^ (b & c);
+        s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+        choice = (e & f) ^ ((!e) & g);
+        s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+        temp2 = s0.wrapping_add(majority);
+        temp1 = h.wrapping_add(s1).wrapping_add(choice).wrapping_add(K[j]).wrapping_add(schedule[j]);
 
         h = g;
         g = f;
