@@ -68,12 +68,14 @@ __constant uint K[64] = {
 
 #define memcpy(src, dest, n) for (size_t i = 0; i < (n); i++) { dest[i] = src[i]; }
 
+#define rotr(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
+
 uint uint_at(__constant const uchar * chars, const size_t idx) {
     return 
         ((uint)(chars[idx]) << 24) |
         ((uint)(chars[idx + 1]) << 16) |
         ((uint)(chars[idx + 2]) << 8) |
-        (uint)(chars[idx]);
+        (uint)(chars[idx + 3]);
 }
 
 void copy_hash_out(__private uint * hash, __global uchar * hashes, size_t offset) {
@@ -139,9 +141,9 @@ __kernel void finish_hash(
         w0 = schedule[j];
         w9 = schedule[j + 9];
         w1 = schedule[j + 1];
-        s0 = rotate(w1, (uint)25) ^ rotate(w1, (uint)14) ^ (w1 >> 3);
+        s0 = rotr(w1, 7) ^ rotr(w1, 18) ^ (w1 >> 3);
         w14 = schedule[j + 14];
-        s1 = rotate(w14, (uint)15) ^ rotate(w14, (uint)13) ^ (w14 >> 10);
+        s1 = rotr(w14, 17) ^ rotr(w14, 19) ^ (w14 >> 10);
 
         // Implementation defined
         schedule[j + 16] = w0 + s0 + w9 + s1;
@@ -149,9 +151,9 @@ __kernel void finish_hash(
 
     for (size_t j = 0; j < 64; j++) {
         majority = (a & b) ^ (a & c) ^ (b & c);
-        s0 = rotate(a, (uint)30) ^ rotate(a, (uint)19) ^ rotate(a, (uint)10);
+        s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
         choice = (e & f) ^ ((~e) & g);
-        s1 = rotate(e, (uint)26) ^ rotate(e, (uint)21) ^ rotate(e, (uint)7);
+        s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
         temp2 = s0 + majority;
         temp1 = h + s1 + choice + K[j] + schedule[j];
 
@@ -205,18 +207,18 @@ __kernel void finish_hash(
         w0 = schedule[j];
         w9 = schedule[j + 9];
         w1 = schedule[j + 1];
-        s0 = rotate(w1, (uint)25) ^ rotate(w1, (uint)14) ^ (w1 >> 3);
+        s0 = rotr(w1, 7) ^ rotr(w1, 18) ^ (w1 >> 3);
         w14 = schedule[j + 14];
-        s1 = rotate(w14, (uint)15) ^ rotate(w14, (uint)13) ^ (w14 >> 10);
+        s1 = rotr(w14, 17) ^ rotr(w14, 19) ^ (w14 >> 10);
 
         schedule[j + 16] = w0 + s0 + w9 + s1;
     }
 
     for (size_t j = 0; j < 64; j++) {
         majority = (a & b) ^ (a & c) ^ (b & c);
-        s0 = rotate(a, (uint)30) ^ rotate(a, (uint)19) ^ rotate(a, (uint)10);
+        s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
         choice = (e & f) ^ ((~e) & g);
-        s1 = rotate(e, (uint)26) ^ rotate(e, (uint)21) ^ rotate(e, (uint)7);
+        s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
         temp2 = s0 + majority;
         temp1 = h + s1 + choice + K[j] + schedule[j];
 

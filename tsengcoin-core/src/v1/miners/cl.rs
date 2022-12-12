@@ -2,7 +2,7 @@ use std::{sync::{Mutex, mpsc::Receiver}, ptr};
 
 use opencl3::{device::{Device, get_all_devices, CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU}, error_codes::ClError, context::Context, command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE}, program::Program, kernel::{Kernel, ExecuteKernel}, types::{cl_uint, cl_uchar, CL_NON_BLOCKING, cl_event}, memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_WRITE_ONLY}};
 
-use crate::{v1::{state::State, block::{genesis_block, RawBlockHeader}}, hash::{self, hash_chunks}};
+use crate::{v1::{state::State, block::{genesis_block, RawBlockHeader}}, hash::{hash_chunks, hash_sha256}};
 
 use super::api::MinerMessage;
 
@@ -37,6 +37,7 @@ pub fn mine(_state_mut: &Mutex<State>, _receiver: Receiver<MinerMessage>) {
     let exp_hash = genesis_block.header.hash;
     let unhashed: RawBlockHeader = (&genesis_block.header).into();
     let raw_data = bincode::serialize(&unhashed).unwrap();
+    let exp_hash_2 = hash_sha256(&raw_data);
     let (schedule, hash_vars) = hash_chunks(&raw_data, 1);
 
     let nonces: [cl_uchar; 32] = genesis_block.header.nonce;
@@ -104,9 +105,6 @@ pub fn mine(_state_mut: &Mutex<State>, _receiver: Receiver<MinerMessage>) {
 
     let device_hash = hex::encode(&hashes);
     let real_hash = hex::encode(&exp_hash);
-
-    println!("real hash: {}", real_hash);
-    println!("device hash: {}", device_hash);
 
     panic!();
 }
