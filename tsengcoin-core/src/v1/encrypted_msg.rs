@@ -6,7 +6,7 @@ use regex::Regex;
 use ring::{aead::{NonceSequence, Nonce, UnboundKey, AES_256_GCM, SealingKey, BoundKey, Aad, OpeningKey}, error::Unspecified};
 use serde::{Serialize, Deserialize};
 
-use crate::{wallet::Address, views::{chat_box::ChatBoxUI, BasicVisible}, fltk_helpers::do_on_gui_thread};
+use crate::{wallet::Address, gui::views::{chat_box::ChatBoxUI, BasicVisible}, gui::fltk_helpers::do_on_gui_thread};
 
 use super::{transaction::{Transaction, get_p2pkh_addr, TxnOutput, get_p2pkh_sender}, state::State, chain_request::{ChatMessage, ChatSession}};
 

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error::Error};
 
-use crate::{wallet::{Address, address_to_b58c, b58c_to_address}, v1::transaction::get_p2pkh_addr, views::chat_box::ChatBoxUI};
+use crate::{wallet::{Address, address_to_b58c, b58c_to_address}, v1::transaction::get_p2pkh_addr, gui::views::chat_box::ChatBoxUI};
 
 use rand_core::OsRng;
 use regex::Regex;
@@ -25,7 +25,10 @@ pub struct FriendState {
     /// How many TsengCoins to send when making a chain request (default)
     pub chain_req_amount: u64,
     /// Chat sessions with other addresses
-    pub chat_sessions: HashMap<String, ChatSession>
+    pub chat_sessions: HashMap<String, ChatSession>,
+    /// When a dialog or other option can't be presented prompting the user to accept/reject and incoming
+    /// connection, this setting indicates whether the connection should be accepted (true) or not (false).
+    pub fallback_accept_connections: bool,
 }
 
 #[derive(Clone)]

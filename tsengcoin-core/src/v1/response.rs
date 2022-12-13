@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 
-use crate::{wallet::{Hash256}, v1::{chain_request::{make_dh_response_req, check_pending_dh, make_intent_req}, request::send_new_txn, transaction::get_p2pkh_sender}, gui::{GUIRequest, GUIResponse, is_connection_accepted}};
+use crate::{wallet::{Hash256}, v1::{chain_request::{make_dh_response_req, check_pending_dh, make_intent_req}, request::send_new_txn, transaction::get_p2pkh_sender}, gui::gui::{GUIRequest, GUIResponse, is_connection_accepted}};
 
 use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block, chain_request::{decompose_dh_req, is_dh_req_to_me, is_dh_req}, encrypted_msg::{is_enc_req, is_enc_req_to_me, decompose_enc_req, handle_chain_request}};
 

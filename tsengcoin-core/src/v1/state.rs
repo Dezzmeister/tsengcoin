@@ -2,7 +2,7 @@ use std::{net::SocketAddr, fs, error::Error, sync::mpsc::{Sender, Receiver, chan
 
 use ring::signature::{EcdsaKeyPair, KeyPair};
 
-use crate::{wallet::{Address, address_from_public_key, Hash256}, gui::{GUIRequest, GUIState}};
+use crate::{wallet::{Address, address_from_public_key, Hash256}, gui::gui::{GUIRequest, GUIState}};
 
 use super::{net::Network, block::{BlockchainDB, genesis_block, Block, resolve_forks}, transaction::{Transaction, UTXOPool, TransactionIndex}, miners::api::MinerMessage, chain_request::FriendState};
 
@@ -60,7 +60,8 @@ impl State {
                 keys: HashMap::new(),
                 exclusivity: 1,
                 chain_req_amount: 1,
-                chat_sessions: HashMap::new()
+                chat_sessions: HashMap::new(),
+                fallback_accept_connections: false,
             },
             gui_req_sender,
             gui,

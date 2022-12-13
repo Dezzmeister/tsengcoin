@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
-use crate::{wallet::Hash256, gui::{GUIResponse, GUIRequest}};
+use crate::{wallet::Hash256, gui::gui::{GUIResponse, GUIRequest}};
 
 use super::{request::{Request, send_req, GetAddrReq, send_msg}, response::{Response, handle_request}, state::State};
 

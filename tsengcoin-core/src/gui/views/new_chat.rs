@@ -12,7 +12,7 @@ use crate::v1::encrypted_msg::{ChainRequest, ChainChatReq};
 use crate::v1::request::send_new_txn;
 use crate::v1::state::State;
 use basic_visible_derive::BasicVisible;
-use crate::views::BasicVisible;
+use crate::gui::views::BasicVisible;
 
 #[derive(BasicVisible)]
 pub struct NewChatUI {

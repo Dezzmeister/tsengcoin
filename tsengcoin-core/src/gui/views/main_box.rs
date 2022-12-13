@@ -1,6 +1,6 @@
 use basic_visible_derive::BasicVisible;
-use crate::views::BasicVisible;
-use crate::views::new_chat::NewChatUI;
+use crate::gui::views::BasicVisible;
+use crate::gui::views::new_chat::NewChatUI;
 use std::sync::{Mutex, Arc};
 
 use fltk::enums::{Shortcut};
@@ -10,8 +10,8 @@ use fltk::menu::{MenuBar, MenuFlag};
 use fltk::app::{Receiver, channel, quit};
 
 use crate::v1::state::State;
-use crate::views::new_alias::NewAliasUI;
-use crate::views::settings::SettingsUI;
+use crate::gui::views::new_alias::NewAliasUI;
+use crate::gui::views::settings::SettingsUI;
 
 #[derive(Debug, Clone, BasicVisible)]
 pub struct MainUI {

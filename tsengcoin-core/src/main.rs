@@ -1,7 +1,7 @@
 #![feature(thread_is_running)]
 pub mod v1;
 pub mod commands;
-pub mod views;
+pub mod gui;
 
 pub mod command;
 pub mod wallet;
@@ -9,8 +9,6 @@ pub mod tsengscript_interpreter;
 pub mod script_error;
 pub mod difficulty;
 pub mod hash;
-pub mod gui;
-pub mod fltk_helpers;
 
 use std::{error::Error, env};
 

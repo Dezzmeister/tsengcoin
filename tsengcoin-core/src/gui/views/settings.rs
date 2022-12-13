@@ -8,7 +8,7 @@ use fltk::button::Button;
 
 use crate::v1::state::State;
 use basic_visible_derive::BasicVisible;
-use crate::views::BasicVisible;
+use crate::gui::views::BasicVisible;
 
 #[derive(BasicVisible)]
 pub struct SettingsUI {

@@ -9,7 +9,8 @@ use super::api::MinerMessage;
 
 static MINER_CL_CODE: &str = include_str!("../../../kernels/cl_miner.cl");
 
-
+// TODO: Remove
+#[allow(unused, deprecated)]
 pub fn mine(_state_mut: &Mutex<State>, _receiver: Receiver<MinerMessage>) {
     let device = match pick_best_device() {
         Err(err) => {

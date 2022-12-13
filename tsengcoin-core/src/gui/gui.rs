@@ -1,7 +1,7 @@
 use std::{sync::{Mutex, mpsc::{Receiver, Sender}, Arc}, error::Error};
 use fltk::{app::{App}};
 
-use crate::{v1::state::State, fltk_helpers::{dialog2, do_on_gui_thread}, views::{main_box::{MainUI, handle_messages}, BasicVisible}};
+use crate::{v1::state::State, gui::fltk_helpers::{dialog2, do_on_gui_thread}, gui::views::{main_box::{MainUI, handle_messages}, BasicVisible}};
 
 #[derive(Debug, Clone)]
 pub struct GUIState {

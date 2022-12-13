@@ -5,7 +5,7 @@ use crate::v1::chain_request::{make_encrypted_chain_req, ChatSession, ChatMessag
 use crate::v1::encrypted_msg::{ChainRequest, ChainChatReq};
 use crate::v1::request::send_new_txn;
 use crate::v1::state::State;
-use crate::views::BasicVisible;
+use crate::gui::views::BasicVisible;
 use crate::wallet::Address;
 use fltk::enums::{LabelType, Color, Align};
 use fltk::prelude::{WidgetExt, GroupExt, InputExt};
