@@ -13,16 +13,20 @@ use ring::{
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "gui")]
 use crate::{
     gui::{
         fltk_helpers::do_on_gui_thread,
         views::{chat_box::ChatBoxUI, BasicVisible},
-    },
-    wallet::Address,
+    }
 };
 
+#[cfg(feature = "gui")]
+use super::chain_request::{ChatMessage, ChatSession};
+
+use crate::wallet::Address;
+
 use super::{
-    chain_request::{ChatMessage, ChatSession},
     state::State,
     transaction::{get_p2pkh_addr, get_p2pkh_sender, Transaction, TxnOutput},
 };
@@ -36,6 +40,7 @@ const B58C_VERSION_PREFIX: u8 = 0x07;
 pub enum ChainRequest {
     FindMeAt(FindMeAtReq),
     // TODO: Double ratchet!!
+    #[cfg(feature = "gui")]
     ChainChat(ChainChatReq),
 }
 
@@ -49,6 +54,7 @@ pub struct FindMeAtReq {
     pub addr: SocketAddr,
 }
 
+#[cfg(feature = "gui")]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChainChatReq {
     pub msg: String,
@@ -93,6 +99,7 @@ pub fn handle_chain_request(
     req: ChainRequest,
     sender: Address,
     state: &mut State,
+    #[allow(unused_variables)]
     state_arc: &Arc<Mutex<State>>,
 ) -> Result<(), Box<dyn Error>> {
     if !state.has_gui() && is_gui_only(&req) {
@@ -102,6 +109,7 @@ pub fn handle_chain_request(
 
     match req {
         ChainRequest::FindMeAt(req) => handle_find_me_at(req, sender, state),
+        #[cfg(feature = "gui")]
         ChainRequest::ChainChat(req) => handle_chain_chat(req, sender, state, state_arc),
     }
 }
@@ -232,6 +240,7 @@ fn handle_find_me_at(
     Ok(())
 }
 
+#[cfg(feature = "gui")]
 fn handle_chain_chat(
     req: ChainChatReq,
     sender: Address,
@@ -327,6 +336,12 @@ fn handle_chain_chat(
     Ok(())
 }
 
+#[cfg(feature = "gui")]
 pub fn is_gui_only(req: &ChainRequest) -> bool {
     matches!(req, ChainRequest::ChainChat(_))
+}
+
+#[cfg(not(feature = "gui"))]
+pub fn is_gui_only(_req: &ChainRequest) -> bool {
+    false
 }

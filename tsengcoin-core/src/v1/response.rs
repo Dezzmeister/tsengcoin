@@ -2,7 +2,6 @@ use std::{
     error::Error,
     net::{SocketAddr, TcpStream},
     sync::{
-        mpsc::{Receiver, Sender},
         Arc, Mutex,
     },
 };
@@ -11,13 +10,12 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    gui::gui::{is_connection_accepted, GUIRequest, GUIResponse},
     v1::{
         chain_request::{check_pending_dh, make_dh_response_req, make_intent_req},
         request::send_new_txn,
         transaction::get_p2pkh_sender,
     },
-    wallet::Hash256,
+    wallet::Hash256, gui::bridge::is_connection_accepted,
 };
 
 use super::{
@@ -27,7 +25,7 @@ use super::{
     encrypted_msg::{decompose_enc_req, handle_chain_request, is_enc_req, is_enc_req_to_me},
     net::{DistantNode, Node, PROTOCOL_VERSION},
     request::{AdvertiseReq, GetAddrReq, GetBlocksReq, Request},
-    state::State,
+    state::{State, GUIChannels},
     transaction::Transaction,
     txn_verify::verify_transaction,
 };
@@ -59,8 +57,7 @@ pub enum GetBlocksRes {
 pub fn handle_request(
     req: Request,
     socket: &TcpStream,
-    gui_req_channel: &Sender<GUIRequest>,
-    gui_res_channel: &Receiver<GUIResponse>,
+    gui_channels: &GUIChannels,
     state_arc: &Arc<Mutex<State>>,
 ) -> Result<(), Box<dyn Error>> {
     match req {
@@ -68,7 +65,7 @@ pub fn handle_request(
         Request::Advertise(data) => handle_advertise(data, socket, state_arc),
         Request::GetBlocks(data) => handle_get_blocks(data, socket, state_arc),
         Request::NewTxn(data) => {
-            handle_new_txn(data, socket, gui_req_channel, gui_res_channel, state_arc)
+            handle_new_txn(data, socket, gui_channels, state_arc)
         }
         Request::NewBlock(data) => handle_new_block(data, socket, state_arc),
     }
@@ -228,8 +225,7 @@ fn handle_get_blocks(
 pub fn handle_new_txn(
     data: Transaction,
     _socket: &TcpStream,
-    gui_req_channel: &Sender<GUIRequest>,
-    gui_res_channel: &Receiver<GUIResponse>,
+    gui_channels: &GUIChannels,
     state_arc: &Arc<Mutex<State>>,
 ) -> Result<(), Box<dyn Error>> {
     let mut guard = state_arc.lock().unwrap();
@@ -306,6 +302,7 @@ pub fn handle_new_txn(
         }
 
         let has_gui = state.has_gui();
+        let default = state.friends.fallback_accept_connections;
 
         // Release the mutex while we wait for a response from the main thread so that we don't hold
         // up the rest of the program
@@ -313,9 +310,9 @@ pub fn handle_new_txn(
 
         let accept_request = is_connection_accepted(
             sender_name.clone(),
-            gui_req_channel,
-            gui_res_channel,
+            gui_channels,
             has_gui,
+            default
         )?;
 
         if !accept_request {

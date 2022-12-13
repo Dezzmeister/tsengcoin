@@ -2,11 +2,13 @@ use std::{collections::HashMap, error::Error, sync::Mutex};
 
 use ring::signature::KeyPair;
 
+#[cfg(feature = "gui")]
+use crate::v1::encrypted_msg::{is_gui_only, ChainChatReq, ChainRequest};
+
 use crate::{
     command::{dispatch_command, Command, CommandInvocation, Field, FieldType, Flag},
     v1::{
         chain_request::make_dh_connect_req,
-        encrypted_msg::{is_gui_only, ChainChatReq, ChainRequest},
         request::send_new_txn,
         state::State,
         transaction::{
@@ -351,6 +353,7 @@ fn get_exclusivity(
     Ok(())
 }
 
+#[cfg(feature = "gui")]
 fn start_chat(
     invocation: &CommandInvocation,
     state: Option<&Mutex<State>>,
@@ -530,6 +533,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         optionals: vec![],
         desc: String::from("Print your current exclusivity"),
     };
+    #[cfg(feature = "gui")]
     let start_chat_cmd: Command<&Mutex<State>> = Command {
         processor: start_chat,
         expected_fields: vec![
@@ -574,6 +578,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
     command_map.insert(String::from("get-aliases"), get_aliases_cmd);
     command_map.insert(String::from("set-exclusivity"), set_exclusivity_cmd);
     command_map.insert(String::from("get-exclusivity"), get_exclusivity_cmd);
+    #[cfg(feature = "gui")]
     command_map.insert(String::from("start-chat"), start_chat_cmd);
 
     // Include debug commands if the feature is enabled

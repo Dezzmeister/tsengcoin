@@ -1,4 +1,4 @@
 {
   "editor.inlayHints.enabled": "offUnlessPressed",
-  "rust-analyzer.cargo.features": ["debug", "cuda_miner", "cl_miner"]
+  "rust-analyzer.cargo.features": ["debug", "cuda_miner", "cl_miner", "gui"]
 }

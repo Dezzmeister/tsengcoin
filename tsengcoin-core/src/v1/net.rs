@@ -3,7 +3,6 @@ use std::{
     error::Error,
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
-        mpsc::{Receiver, Sender},
         Arc, Mutex,
     },
 };
@@ -12,16 +11,14 @@ use chrono::{DateTime, Utc};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    gui::gui::{GUIRequest, GUIResponse},
-    wallet::Hash256,
-};
+use crate::wallet::Hash256;
 
 use super::{
     request::{send_msg, send_req, GetAddrReq, Request},
     response::{handle_request, Response},
     state::State,
 };
+use super::state::GUIChannels;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_NEIGHBORS: usize = 8;
@@ -296,10 +293,10 @@ impl Network {
     }
 }
 
+#[cfg(feature = "gui")]
 pub fn listen_for_connections(
     listen_addr: SocketAddr,
-    gui_req_channel: &Sender<GUIRequest>,
-    gui_res_channel: &Receiver<GUIResponse>,
+    gui_channels: &GUIChannels,
     state_arc: &Arc<Mutex<State>>,
 ) -> Result<(), Box<dyn Error>> {
     let socket = TcpListener::bind(listen_addr)?;
@@ -310,7 +307,29 @@ pub fn listen_for_connections(
             Ok(conn) => {
                 let req: Request = bincode::deserialize_from(&conn)?;
 
-                handle_request(req, &conn, gui_req_channel, gui_res_channel, state_arc)?;
+                handle_request(req, &conn, gui_channels, state_arc)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "gui"))]
+pub fn listen_for_connections(
+    listen_addr: SocketAddr,
+    gui_channels: &GUIChannels,
+    state_arc: &Arc<Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
+    let socket = TcpListener::bind(listen_addr)?;
+
+    for stream in socket.incoming() {
+        match stream {
+            Err(err) => println!("Error receiving incoming connection: {}", err),
+            Ok(conn) => {
+                let req: Request = bincode::deserialize_from(&conn)?;
+
+                handle_request(req, &conn, gui_channels, state_arc)?;
             }
         }
     }

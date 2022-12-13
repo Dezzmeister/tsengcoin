@@ -8,8 +8,10 @@ use std::{
 
 use ring::signature::{EcdsaKeyPair, KeyPair};
 
+#[cfg(feature = "gui")]
+use crate::gui::gui::{GUIRequest, GUIResponse, GUIState};
+
 use crate::{
-    gui::gui::{GUIRequest, GUIState},
     wallet::{address_from_public_key, Address, Hash256},
 };
 
@@ -42,18 +44,31 @@ pub struct State {
     /// a shared secret.
     /// TODO: Double ratchet
     pub friends: FriendState,
+    #[cfg(feature = "gui")]
     pub gui_req_sender: Sender<GUIRequest>,
+    #[cfg(feature = "gui")]
     pub gui: Option<GUIState>,
     pub miner: Option<String>,
 
     miner_channel: Sender<MinerMessage>,
 }
 
+#[cfg(feature = "gui")]
+pub struct GUIChannels {
+    pub req_channel: Sender<GUIRequest>,
+    pub res_channel: Receiver<GUIResponse>
+}
+
+#[cfg(not(feature = "gui"))]
+pub struct GUIChannels {}
+
 impl State {
     pub fn new(
         addr_me: SocketAddr,
         keypair: EcdsaKeyPair,
+        #[cfg(feature = "gui")]
         gui_req_sender: Sender<GUIRequest>,
+        #[cfg(feature = "gui")]
         gui: Option<GUIState>,
         miner: Option<String>,
     ) -> (Self, Receiver<MinerMessage>) {
@@ -85,7 +100,9 @@ impl State {
                     chat_sessions: HashMap::new(),
                     fallback_accept_connections: false,
                 },
+                #[cfg(feature = "gui")]
                 gui_req_sender,
+                #[cfg(feature = "gui")]
                 gui,
                 miner,
                 miner_channel: miner_sender,
@@ -175,8 +192,14 @@ impl State {
 
     /// Returns true if there is a main GUI attached to the program: TsengCoin core can run in
     /// a (nearly) headless mode or in a graphical mode.
+    #[cfg(feature = "gui")]
     pub fn has_gui(&self) -> bool {
         self.gui.is_some()
+    }
+
+    #[cfg(not(feature = "gui"))]
+    pub fn has_gui(&self) -> bool {
+        false
     }
 }
 

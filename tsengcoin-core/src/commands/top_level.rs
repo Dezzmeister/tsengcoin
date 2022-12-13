@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     error::Error,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::{mpsc::channel, Arc, Mutex},
+    sync::{Arc, Mutex},
     thread,
 };
 
@@ -12,21 +12,28 @@ use thread_priority::{ThreadBuilderExt, ThreadPriority};
 use super::session::listen_for_commands;
 use crate::{
     command::{
-        Command, CommandInvocation, CommandMap, Condition, Field, FieldType, Flag, VarField,
+        Command, CommandInvocation, CommandMap, Field, FieldType, Flag, VarField,
     },
-    gui::gui::{gui_req_loop, main_gui_loop, GUIState},
+    gui::{bridge::get_wallet_password_arg},
     tsengscript_interpreter::{execute, ExecutionResult, Token},
     v1::{
         miners::api::{miners, num_miners, start_miner},
         net::listen_for_connections,
         request::{advertise_self, discover, download_latest_blocks, get_first_peers},
-        state::State,
+        state::{State, GUIChannels},
     },
     wallet::{
         address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair,
         Address,
     },
 };
+
+#[cfg(feature = "gui")]
+use std::sync::mpsc::channel;
+#[cfg(feature = "gui")]
+use crate::gui::gui::{gui_req_loop, main_gui_loop, GUIState};
+#[cfg(feature = "gui")]
+use crate::command::Condition;
 
 #[cfg(all(feature = "debug", feature = "cuda_miner"))]
 use super::cuda_debug::make_command_map as make_cuda_dbg_command_map;
@@ -136,15 +143,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
         .parse::<u16>()
         .unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
-    let wallet_password = invocation.get_field("wallet-password").unwrap_or_else(|| {
-        fltk::dialog::password_default("Enter your wallet password", "")
-            .expect("Need to supply a password!")
-    });
-    let with_gui = invocation.get_flag("gui");
-    let gui_state = match with_gui {
-        false => None,
-        true => Some(GUIState::new()),
-    };
+    let wallet_password = get_wallet_password_arg(invocation);
     let miner_names = miners();
     let miner = match num_miners() {
         0 => None,
@@ -175,16 +174,43 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
         seed_addr
     );
 
-    let (gui_req_sender, gui_req_receiver) = channel();
-    let (gui_res_sender, gui_res_receiver) = channel();
+    #[cfg(feature = "gui")]
+    let (state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender) = {
+        let with_gui = invocation.get_flag("gui");
+        let gui_state = match with_gui {
+            false => None,
+            true => Some(GUIState::new()),
+        };
 
-    let (state, miner_receiver) = State::new(
-        addr_me,
-        keypair,
-        gui_req_sender.clone(),
-        gui_state,
-        miner.clone(),
-    );
+        let (gui_req_sender, gui_req_receiver) = channel();
+        let (gui_res_sender, gui_res_receiver) = channel();
+        let gui_channels = GUIChannels {
+            req_channel: gui_req_sender.clone(),
+            res_channel: gui_res_receiver
+        };
+
+        let (state, miner_receiver) = State::new(
+            addr_me,
+            keypair,
+            gui_req_sender,
+            gui_state,
+            miner.clone(),
+        );
+
+        (state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender)
+    };
+
+    #[cfg(not(feature = "gui"))]
+    let (state, miner_receiver, gui_channels) = {
+        let (state, miner_receiver) = State::new(
+            addr_me,
+            keypair,
+            miner.clone()
+        );
+
+        (state, miner_receiver, GUIChannels {})
+    };
+
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -198,7 +224,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     thread::Builder::new()
         .name(String::from("network-listener"))
         .spawn(move || {
-            listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2)
+            listen_for_connections(addr_me, &gui_channels, &state_arc_2)
                 .expect("Network listener thread crashed");
             advertise_self(&state_arc_2).expect("Failed to advertise self to network");
         })
@@ -218,18 +244,27 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
             .unwrap();
     }
 
-    thread::Builder::new()
-        .name(String::from("command"))
-        .spawn(move || {
-            println!("Type a command, or 'help' for a list of commands");
-            listen_for_commands(&state_arc_3);
-        })
-        .unwrap();
+    #[cfg(feature = "gui")]
+    {
+        thread::Builder::new()
+            .name(String::from("command"))
+            .spawn(move || {
+                println!("Type a command, or 'help' for a list of commands");
+                listen_for_commands(&state_arc_3);
+            })
+            .unwrap();
 
-    if with_gui {
-        main_gui_loop(state_arc);
-    } else {
-        gui_req_loop(gui_req_receiver, gui_res_sender);
+        if with_gui {
+            main_gui_loop(state_arc);
+        } else {
+            gui_req_loop(gui_req_receiver, gui_res_sender);
+        }
+    }
+
+    #[cfg(not(feature = "gui"))]
+    {
+        println!("Type a command, or 'help' for a list of commands");
+        listen_for_commands(&state_arc_3);
     }
 
     Ok(())
@@ -242,15 +277,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
         .parse::<u16>()
         .unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
-    let wallet_password = invocation.get_field("wallet-password").unwrap_or_else(|| {
-        fltk::dialog::password_default("Enter your wallet password", "")
-            .expect("Need to supply a password!")
-    });
-    let with_gui = invocation.get_flag("gui");
-    let gui_state = match with_gui {
-        false => None,
-        true => Some(GUIState::new()),
-    };
+    let wallet_password = get_wallet_password_arg(invocation);
     let miner_names = miners();
     let miner = match num_miners() {
         0 => None,
@@ -275,16 +302,43 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
 
     let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
 
-    let (gui_req_sender, gui_req_receiver) = channel();
-    let (gui_res_sender, gui_res_receiver) = channel();
+    #[cfg(feature = "gui")]
+    let (state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender) = {
+        let with_gui = invocation.get_flag("gui");
+        let gui_state = match with_gui {
+            false => None,
+            true => Some(GUIState::new()),
+        };
 
-    let (state, miner_receiver) = State::new(
-        addr_me,
-        keypair,
-        gui_req_sender.clone(),
-        gui_state,
-        miner.clone(),
-    );
+        let (gui_req_sender, gui_req_receiver) = channel();
+        let (gui_res_sender, gui_res_receiver) = channel();
+        let gui_channels = GUIChannels {
+            req_channel: gui_req_sender.clone(),
+            res_channel: gui_res_receiver
+        };
+
+        let (state, miner_receiver) = State::new(
+            addr_me,
+            keypair,
+            gui_req_sender,
+            gui_state,
+            miner.clone(),
+        );
+
+        (state, miner_receiver, gui_channels,with_gui, gui_req_receiver, gui_res_sender)
+    };
+
+    #[cfg(not(feature = "gui"))]
+    let (state, miner_receiver, gui_channels) = {
+        let (state, miner_receiver) = State::new(
+            addr_me,
+            keypair,
+            miner.clone()
+        );
+
+        (state, miner_receiver, GUIChannels {})
+    };
+
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -296,7 +350,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     thread::Builder::new()
         .name(String::from("network-listener"))
         .spawn(move || {
-            listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2)
+            listen_for_connections(addr_me, &gui_channels, &state_arc_2)
                 .expect("Network listener thread crashed");
         })
         .unwrap();
@@ -313,18 +367,27 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
             .unwrap();
     }
 
-    thread::Builder::new()
-        .name(String::from("command"))
-        .spawn(move || {
-            println!("Type a command, or 'help' for a list of commands");
-            listen_for_commands(&state_arc_3);
-        })
-        .unwrap();
+    #[cfg(feature = "gui")]
+    {
+        thread::Builder::new()
+            .name(String::from("command"))
+            .spawn(move || {
+                println!("Type a command, or 'help' for a list of commands");
+                listen_for_commands(&state_arc_3);
+            })
+            .unwrap();
 
-    if with_gui {
-        main_gui_loop(state_arc);
-    } else {
-        gui_req_loop(gui_req_receiver, gui_res_sender);
+        if with_gui {
+            main_gui_loop(state_arc);
+        } else {
+            gui_req_loop(gui_req_receiver, gui_res_sender);
+        }
+    }
+
+    #[cfg(not(feature = "gui"))]
+    {
+        println!("Type a command, or 'help' for a list of commands");
+        listen_for_commands(&state_arc_3);
     }
 
     Ok(())
@@ -419,10 +482,13 @@ pub fn make_command_map() -> CommandMap<()> {
     };
 
     let num_miners = num_miners();
-    let mut connect_flags = vec![Flag::new(
-        "gui",
-        "Set this flag to start the GUI application as well. You can still use TsengCoin from the console, but some GUI-only features will also be available."
-    )];
+    let mut connect_flags = vec![
+        #[cfg(feature = "gui")]
+        Flag::new(
+            "gui",
+            "Set this flag to start the GUI application as well. You can still use TsengCoin from the console, but some GUI-only features will also be available."
+        )
+    ];
     let mut connect_optionals = vec![];
     if num_miners == 1 {
         connect_flags.append(&mut vec![Flag::new(
@@ -463,6 +529,7 @@ pub fn make_command_map() -> CommandMap<()> {
                 FieldType::Pos(3),
                 "Path to your wallet file"
             ),
+            #[cfg(feature = "gui")]
             Field::new_condition(
                 "wallet-password",
                 FieldType::Spaces(4),
@@ -471,6 +538,12 @@ pub fn make_command_map() -> CommandMap<()> {
                     "pwgui",
                     "Set this flag to enter the password through a dialog box instead of passing it in as a command line argument."
                 )
+            ),
+            #[cfg(not(feature = "gui"))]
+            Field::new(
+                "wallet-password",
+                FieldType::Spaces(4),
+                "Password to your wallet file",
             )
         ],
         flags: connect_flags.clone(),
@@ -490,6 +563,7 @@ pub fn make_command_map() -> CommandMap<()> {
                 FieldType::Pos(1),
                 "Path to your wallet file"
             ),
+            #[cfg(feature = "gui")]
             Field::new_condition(
                 "wallet-password",
                 FieldType::Spaces(2),
@@ -498,6 +572,12 @@ pub fn make_command_map() -> CommandMap<()> {
                     "pwgui",
                     "Set this flag to enter the password through a dialog box instead of passing it in as a command line argument."
                 )
+            ),
+            #[cfg(not(feature = "gui"))]
+            Field::new(
+                "wallet-password",
+                FieldType::Spaces(2),
+                "Password to your wallet file",
             )
         ],
         flags: connect_flags,

@@ -50,6 +50,7 @@ pub fn miners() -> Vec<String> {
     map.keys().map(|k| k.to_owned()).collect::<Vec<String>>()
 }
 
+#[allow(unused_mut)]
 fn make_miner_map() -> HashMap<String, MineFunc> {
     let mut out: HashMap<String, MineFunc> = HashMap::new();
 

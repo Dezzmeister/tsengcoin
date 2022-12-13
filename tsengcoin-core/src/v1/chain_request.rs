@@ -1,7 +1,12 @@
 use std::{collections::HashMap, error::Error};
 
+#[cfg(feature = "gui")]
+use crate::gui::views::chat_box::ChatBoxUI;
+
+#[cfg(feature = "gui")]
+use super::encrypted_msg::ChainChatReq;
+
 use crate::{
-    gui::views::chat_box::ChatBoxUI,
     v1::transaction::get_p2pkh_addr,
     wallet::{address_to_b58c, b58c_to_address, Address},
 };
@@ -18,7 +23,7 @@ use x25519_dalek::{EphemeralSecret, PublicKey};
 use super::{
     encrypted_msg::{
         decrypt_request, enc_req_meta, encrypt_request, make_opening_key, make_sealing_key,
-        ChainChatReq, ChainRequest, EncryptedChainRequest, NonceGen,
+        ChainRequest, EncryptedChainRequest, NonceGen,
     },
     state::State,
     transaction::{
@@ -53,6 +58,7 @@ pub struct FriendState {
 #[derive(Clone)]
 pub struct ChatSession {
     pub messages: Vec<ChatMessage>,
+    #[cfg(feature = "gui")]
     pub window: Option<ChatBoxUI>,
 }
 
@@ -206,6 +212,7 @@ pub fn make_intent_req(
 ) -> Result<Option<Transaction>, Box<dyn Error>> {
     match state.friends.intents.remove(&dest) {
         Some(intent) => {
+            #[cfg(feature = "gui")]
             if let ChainRequest::ChainChat(data) = intent.clone() {
                 // We need to add this message to the chat session or create a chat session if it doesn't exist
                 handle_chat_intent_req(data, dest, state);
@@ -217,6 +224,7 @@ pub fn make_intent_req(
     }
 }
 
+#[cfg(feature = "gui")]
 fn handle_chat_intent_req(data: ChainChatReq, dest: Address, state: &mut State) {
     let sender_name = state.friends.get_name(dest);
     match state.friends.chat_sessions.get_mut(&sender_name) {
