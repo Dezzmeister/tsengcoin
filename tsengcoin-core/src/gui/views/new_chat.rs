@@ -1,22 +1,28 @@
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
-use fltk::enums::{Align, LabelType, Color};
-use fltk::prelude::{WidgetExt, WidgetBase, InputExt, WindowExt, GroupExt, DisplayExt};
-use fltk::text::{TextDisplay, TextBuffer};
-use fltk::window::Window;
-use fltk::input::{Input, IntInput};
-use fltk::button::Button;
+use fltk::{
+    button::Button,
+    enums::{Align, Color, LabelType},
+    input::{Input, IntInput},
+    prelude::{DisplayExt, GroupExt, InputExt, WidgetBase, WidgetExt, WindowExt},
+    text::{TextBuffer, TextDisplay},
+    window::Window,
+};
 
-use crate::v1::chain_request::make_dh_connect_req;
-use crate::v1::encrypted_msg::{ChainRequest, ChainChatReq};
-use crate::v1::request::send_new_txn;
-use crate::v1::state::State;
+use crate::{
+    gui::views::BasicVisible,
+    v1::{
+        chain_request::make_dh_connect_req,
+        encrypted_msg::{ChainChatReq, ChainRequest},
+        request::send_new_txn,
+        state::State,
+    },
+};
 use basic_visible_derive::BasicVisible;
-use crate::gui::views::BasicVisible;
 
 #[derive(BasicVisible)]
 pub struct NewChatUI {
-    pub win: Window
+    pub win: Window,
 }
 
 impl NewChatUI {
@@ -66,27 +72,29 @@ impl NewChatUI {
             let mut state = state_mut.lock().unwrap();
 
             let first_message = first_message_input.value();
-            let req_amount = chain_req_input.value().parse::<u64>().unwrap_or(state.friends.chain_req_amount);
+            let req_amount = chain_req_input
+                .value()
+                .parse::<u64>()
+                .unwrap_or(state.friends.chain_req_amount);
             let dest_address = match state.friends.get_address(address_input.value()) {
                 Err(_) => {
                     error_display.show();
                     return;
-                },
-                Ok(addr) => addr
+                }
+                Ok(addr) => addr,
             };
-            
-            let intent = ChainRequest::ChainChat(ChainChatReq {
-                msg: first_message
-            });
 
-            let connect_req = match make_dh_connect_req(dest_address, req_amount, 1, Some(intent), &mut state) {
-                Err(err) => {
-                    println!("Error making chat transaction: {}", err);
-                    win_clone.hide();
-                    return;
-                },
-                Ok(req) => req
-            };
+            let intent = ChainRequest::ChainChat(ChainChatReq { msg: first_message });
+
+            let connect_req =
+                match make_dh_connect_req(dest_address, req_amount, 1, Some(intent), &mut state) {
+                    Err(err) => {
+                        println!("Error making chat transaction: {}", err);
+                        win_clone.hide();
+                        return;
+                    }
+                    Ok(req) => req,
+                };
 
             match send_new_txn(connect_req, &state) {
                 Err(err) => println!("Error sending chat transaction: {}", err),
@@ -101,8 +109,6 @@ impl NewChatUI {
         win.make_modal(true);
         win.end();
 
-        Self {
-            win
-        }
+        Self { win }
     }
 }

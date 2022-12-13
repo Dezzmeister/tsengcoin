@@ -1,5 +1,7 @@
-use std::error::{Error as StdError, self};
-use std::fmt;
+use std::{
+    error::{self, Error as StdError},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +25,7 @@ pub enum ErrorKind {
     OrphanTxn(Hash256),
     InvalidCoinbase,
     InvalidCoinbaseAmount(u64, u64),
-    InvalidMerkleRoot
+    InvalidMerkleRoot,
 }
 
 impl StdError for ErrorKind {
@@ -39,7 +41,7 @@ impl StdError for ErrorKind {
             ErrorKind::OrphanTxn(_) => "Orphan transaction in block",
             ErrorKind::InvalidCoinbase => "Invalid coinbase transaction",
             ErrorKind::InvalidCoinbaseAmount(_, _) => "Invalid coinbase transaction amount",
-            ErrorKind::InvalidMerkleRoot => "Invalid Merkle root"
+            ErrorKind::InvalidMerkleRoot => "Invalid Merkle root",
         }
     }
 
@@ -56,13 +58,33 @@ impl fmt::Display for ErrorKind {
             ErrorKind::FailedProofOfWork => write!(fmt, "{}", self.description()),
             ErrorKind::InvalidHeaderHash => write!(fmt, "{}", self.description()),
             ErrorKind::OldBlock => write!(fmt, "{}", self.description()),
-            ErrorKind::TooLarge(max_size, actual_size) => write!(fmt, "{}: max size is {}B, block is {}B", self.description(), max_size, actual_size),
+            ErrorKind::TooLarge(max_size, actual_size) => write!(
+                fmt,
+                "{}: max size is {}B, block is {}B",
+                self.description(),
+                max_size,
+                actual_size
+            ),
             ErrorKind::EmptyBlock => write!(fmt, "{}", self.description()),
-            ErrorKind::TxnError(err, txn) => write!(fmt, "{}: error: {}, txn: {}", self.description(), err, hex::encode(txn)),
-            ErrorKind::OrphanTxn(txn) => write!(fmt, "{}: txn: {}", self.description(), hex::encode(txn)),
+            ErrorKind::TxnError(err, txn) => write!(
+                fmt,
+                "{}: error: {}, txn: {}",
+                self.description(),
+                err,
+                hex::encode(txn)
+            ),
+            ErrorKind::OrphanTxn(txn) => {
+                write!(fmt, "{}: txn: {}", self.description(), hex::encode(txn))
+            }
             ErrorKind::InvalidCoinbase => write!(fmt, "{}", self.description()),
-            ErrorKind::InvalidCoinbaseAmount(exp, actual) => write!(fmt, "{}: expected: {}, actual: {}", self.description(), exp, actual),
-            ErrorKind::InvalidMerkleRoot => write!(fmt, "{}", self.description())
+            ErrorKind::InvalidCoinbaseAmount(exp, actual) => write!(
+                fmt,
+                "{}: expected: {}, actual: {}",
+                self.description(),
+                exp,
+                actual
+            ),
+            ErrorKind::InvalidMerkleRoot => write!(fmt, "{}", self.description()),
         }
     }
 }

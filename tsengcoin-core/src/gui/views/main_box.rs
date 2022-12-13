@@ -1,22 +1,24 @@
+use crate::gui::views::{new_chat::NewChatUI, BasicVisible};
 use basic_visible_derive::BasicVisible;
-use crate::gui::views::BasicVisible;
-use crate::gui::views::new_chat::NewChatUI;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
-use fltk::enums::{Shortcut};
-use fltk::prelude::{WidgetExt, GroupExt, MenuExt};
-use fltk::window::{Window};
-use fltk::menu::{MenuBar, MenuFlag};
-use fltk::app::{Receiver, channel, quit};
+use fltk::{
+    app::{channel, quit, Receiver},
+    enums::Shortcut,
+    menu::{MenuBar, MenuFlag},
+    prelude::{GroupExt, MenuExt, WidgetExt},
+    window::Window,
+};
 
-use crate::v1::state::State;
-use crate::gui::views::new_alias::NewAliasUI;
-use crate::gui::views::settings::SettingsUI;
+use crate::{
+    gui::views::{new_alias::NewAliasUI, settings::SettingsUI},
+    v1::state::State,
+};
 
 #[derive(Debug, Clone, BasicVisible)]
 pub struct MainUI {
     pub win: Window,
-    pub receiver: Receiver<MainUIMessage>
+    pub receiver: Receiver<MainUIMessage>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -26,12 +28,14 @@ pub enum MainUIMessage {
     ViewAliases,
     NewAlias,
     NewChat,
-    About
+    About,
 }
 
 impl MainUI {
     pub fn new() -> Self {
-        let win = Window::default().with_label("TsengCoin").with_size(400, 300);
+        let win = Window::default()
+            .with_label("TsengCoin")
+            .with_size(400, 300);
         let mut menu_bar = MenuBar::default().with_size(400, 20);
 
         let (sender, receiver) = channel();
@@ -41,7 +45,7 @@ impl MainUI {
             Shortcut::Ctrl | 's',
             MenuFlag::Normal,
             sender,
-            MainUIMessage::Settings
+            MainUIMessage::Settings,
         );
 
         menu_bar.add_emit(
@@ -49,7 +53,7 @@ impl MainUI {
             Shortcut::Ctrl | 'q',
             MenuFlag::Normal,
             sender,
-            MainUIMessage::Quit
+            MainUIMessage::Quit,
         );
 
         menu_bar.add_emit(
@@ -57,7 +61,7 @@ impl MainUI {
             Shortcut::None,
             MenuFlag::Normal,
             sender,
-            MainUIMessage::ViewAliases
+            MainUIMessage::ViewAliases,
         );
 
         menu_bar.add_emit(
@@ -65,7 +69,7 @@ impl MainUI {
             Shortcut::Ctrl | 'a',
             MenuFlag::Normal,
             sender,
-            MainUIMessage::NewAlias
+            MainUIMessage::NewAlias,
         );
 
         menu_bar.add_emit(
@@ -73,7 +77,7 @@ impl MainUI {
             Shortcut::None,
             MenuFlag::Normal,
             sender,
-            MainUIMessage::NewChat
+            MainUIMessage::NewChat,
         );
 
         menu_bar.add_emit(
@@ -81,15 +85,12 @@ impl MainUI {
             Shortcut::None,
             MenuFlag::Normal,
             sender,
-            MainUIMessage::About
+            MainUIMessage::About,
         );
 
         win.end();
 
-        Self {
-            win,
-            receiver
-        }
+        Self { win, receiver }
     }
 }
 
@@ -100,25 +101,25 @@ pub fn handle_messages(state_arc: &Arc<Mutex<State>>, main_ui: &MainUI) {
             Settings => {
                 let mut settings = SettingsUI::new(Arc::clone(state_arc));
                 settings.show();
-            },
+            }
             Quit => {
                 quit();
                 // TODO: Quitting logic
-            },
+            }
             ViewAliases => {
                 println!("view aliases")
             }
             NewAlias => {
                 let mut new_alias = NewAliasUI::new(Arc::clone(state_arc));
                 new_alias.show();
-            },
+            }
             NewChat => {
                 let mut new_chat = NewChatUI::new(Arc::clone(state_arc));
                 new_chat.show();
-            },
+            }
             About => {
                 fltk::dialog::message_default("TsengCoin core client, written in Rust. GUI built with FLTK (Fast Light Toolkit).\nSource code at https://github.com/Dezzmeister/tsengcoin");
-            },
+            }
         }
     }
 }

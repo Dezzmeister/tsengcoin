@@ -1,25 +1,27 @@
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
-use fltk::enums::{Align, LabelType, Color};
-use fltk::prelude::{WidgetExt, WidgetBase, InputExt, WindowExt, GroupExt, DisplayExt};
-use fltk::window::Window;
-use fltk::input::Input;
-use fltk::text::{TextDisplay, TextBuffer};
-use fltk::button::Button;
+use fltk::{
+    button::Button,
+    enums::{Align, Color, LabelType},
+    input::Input,
+    prelude::{DisplayExt, GroupExt, InputExt, WidgetBase, WidgetExt, WindowExt},
+    text::{TextBuffer, TextDisplay},
+    window::Window,
+};
 
-use crate::v1::state::State;
-use crate::wallet::b58c_to_address;
+use crate::{gui::views::BasicVisible, v1::state::State, wallet::b58c_to_address};
 use basic_visible_derive::BasicVisible;
-use crate::gui::views::BasicVisible;
 
 #[derive(BasicVisible)]
 pub struct NewAliasUI {
-    pub win: Window
+    pub win: Window,
 }
 
 impl NewAliasUI {
     pub fn new(state_arc: Arc<Mutex<State>>) -> Self {
-        let mut win = Window::default().with_size(400, 150).with_label("New Alias");
+        let mut win = Window::default()
+            .with_size(400, 150)
+            .with_label("New Alias");
         let mut save_btn = Button::new(325, 120, 64, 20, "Save");
         let mut cancel_btn = Button::new(255, 120, 64, 20, "Cancel");
         let mut address_input = Input::new(20, 32, 225, 22, "Address");
@@ -54,15 +56,15 @@ impl NewAliasUI {
 
             let address_b58c = address_input.value();
             let alias = alias_input.value();
-            
+
             let address = match b58c_to_address(address_b58c) {
                 Err(_) => {
                     error_display.show();
                     return;
-                },
-                Ok(addr) => addr
+                }
+                Ok(addr) => addr,
             };
-            
+
             state.friends.aliases.insert(address, alias);
 
             win_clone.hide();
@@ -71,8 +73,6 @@ impl NewAliasUI {
         win.make_modal(true);
         win.end();
 
-        Self {
-            win
-        }
+        Self { win }
     }
 }

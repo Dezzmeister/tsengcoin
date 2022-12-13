@@ -1,18 +1,17 @@
-use std::cmp::max;
-use std::collections::HashMap;
-use std::error::Error;
+use std::{cmp::max, collections::HashMap, error::Error};
 
 pub struct Command<T> {
     pub processor: CommandProcessor<T>,
     pub expected_fields: Vec<Field>,
     pub flags: Vec<Flag>,
     pub optionals: Vec<VarField>,
-    pub desc: String
+    pub desc: String,
 }
 
 /// The function that actually executes the command. Accepts the parameters passed into the command,
 /// and the state/context object
-pub type CommandProcessor<T> = fn (invocation: &CommandInvocation, state: Option<T>) -> Result<(), Box<dyn Error>>;
+pub type CommandProcessor<T> =
+    fn(invocation: &CommandInvocation, state: Option<T>) -> Result<(), Box<dyn Error>>;
 pub type CommandMap<T> = HashMap<String, Command<T>>;
 
 pub struct CommandInvocation {
@@ -33,7 +32,7 @@ pub struct CommandInvocation {
     pub fields: HashMap<String, String>,
 
     /// Optional arguments, set as variables
-    pub optionals: HashMap<String, String>
+    pub optionals: HashMap<String, String>,
 }
 
 pub struct Field {
@@ -41,7 +40,7 @@ pub struct Field {
     pub field_type: FieldType,
     pub desc: String,
     /// A condition can specify the name of a flag that can disable this field. If the flag is present, the field will not be required.
-    pub condition: Option<Condition>
+    pub condition: Option<Condition>,
 }
 
 #[derive(Clone)]
@@ -69,12 +68,12 @@ pub enum FieldType {
     /// A spaces argument, if not passed in as a var, is expected to be found starting at the given
     /// position. The argument consists of all tokens after and including the one at the given position,
     /// joined by spaces. A spaces argument should only ever be the last argument expected.
-    Spaces(usize)
+    Spaces(usize),
 }
 
 pub struct Condition {
     pub disable_flag: String,
-    pub desc: String
+    pub desc: String,
 }
 
 impl CommandInvocation {
@@ -97,23 +96,31 @@ impl Field {
             name: name.to_owned(),
             field_type,
             desc: desc.to_owned(),
-            condition: None
+            condition: None,
         }
     }
 
-    pub fn new_condition(name: &str, field_type: FieldType, desc: &str, condition: Condition) -> Self {
+    pub fn new_condition(
+        name: &str,
+        field_type: FieldType,
+        desc: &str,
+        condition: Condition,
+    ) -> Self {
         Field {
             name: name.to_owned(),
             field_type,
             desc: desc.to_owned(),
-            condition: Some(condition)
+            condition: Some(condition),
         }
     }
 }
 
 impl Flag {
     pub fn new(name: &str, desc: &str) -> Self {
-        Flag { name: name.to_owned(), desc: desc.to_owned() }
+        Flag {
+            name: name.to_owned(),
+            desc: desc.to_owned(),
+        }
     }
 }
 
@@ -122,7 +129,7 @@ impl VarField {
         Self {
             name: name.to_owned(),
             desc: desc.to_owned(),
-            placeholder: None
+            placeholder: None,
         }
     }
 
@@ -130,7 +137,7 @@ impl VarField {
         Self {
             name: name.to_owned(),
             desc: desc.to_owned(),
-            placeholder: Some(placeholder.to_owned())
+            placeholder: Some(placeholder.to_owned()),
         }
     }
 }
@@ -139,7 +146,7 @@ impl Condition {
     pub fn new(flag: &str, desc: &str) -> Self {
         Condition {
             disable_flag: flag.to_owned(),
-            desc: desc.to_owned()
+            desc: desc.to_owned(),
         }
     }
 }
@@ -171,12 +178,12 @@ pub fn dispatch_command<T>(args: &Vec<String>, map: &CommandMap<T>, state: Optio
         }
     };
 
-    let invocation =  match decompose_raw_args(args, &command.expected_fields, &command.optionals) {
+    let invocation = match decompose_raw_args(args, &command.expected_fields, &command.optionals) {
         Err(err) => {
             eprintln!("Failed to decompose command: {}", err);
             return;
-        },
-        Ok(inv) => inv
+        }
+        Ok(inv) => inv,
     };
 
     match (command.processor)(&invocation, state) {
@@ -185,22 +192,24 @@ pub fn dispatch_command<T>(args: &Vec<String>, map: &CommandMap<T>, state: Optio
     }
 }
 
-fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>, possible_optionals: &Vec<VarField>) -> Result<CommandInvocation, Box<dyn Error>> {
+fn decompose_raw_args(
+    raw_args: &Vec<String>,
+    expected_fields: &Vec<Field>,
+    possible_optionals: &Vec<VarField>,
+) -> Result<CommandInvocation, Box<dyn Error>> {
     let cmd_name = &raw_args[0];
     let trimmed_args = &raw_args[1..];
     let mut assignments: HashMap<String, String> = HashMap::new();
     let mut optionals: HashMap<String, String> = HashMap::new();
-    let (specials, ordered_args): (Vec<String>, Vec<String>) = 
-        trimmed_args
-            .iter()
-            .map(|s| s.to_owned())
-            .partition(|s| s.starts_with("--"));
+    let (specials, ordered_args): (Vec<String>, Vec<String>) = trimmed_args
+        .iter()
+        .map(|s| s.to_owned())
+        .partition(|s| s.starts_with("--"));
 
-    let (assignment_strs, flags): (Vec<String>, Vec<String>) = 
-        specials
-            .iter()
-            .map(|s| s.trim_start_matches("--").to_owned())
-            .partition(|s| s.contains('='));
+    let (assignment_strs, flags): (Vec<String>, Vec<String>) = specials
+        .iter()
+        .map(|s| s.trim_start_matches("--").to_owned())
+        .partition(|s| s.contains('='));
 
     for assignment in assignment_strs {
         let pair: Vec<&str> = assignment.split('=').collect();
@@ -219,7 +228,13 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>, poss
 
     // Process explicitly assigned fields first and recalculate positions for
     // positional fields
-    for Field {name, field_type, desc, condition} in expected_fields {
+    for Field {
+        name,
+        field_type,
+        desc,
+        condition,
+    } in expected_fields
+    {
         // Will only be Some if the field was assigned with `--name=value` syntax
         let var_field = assignments.get(name).cloned();
 
@@ -233,20 +248,42 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>, poss
 
         match (field_type, var_field) {
             (FieldType::Var, Some(var)) => drop(fields.insert(name.to_owned(), var)),
-            (FieldType::Var, None) => return Err(format!("Missing expected argument {name}. Pass this in with --{name}=<value>").into()),
-            (FieldType::Pos(_) | FieldType::Spaces(_), Some(var)) => drop(fields.insert(name.to_owned(), var)),
-            (FieldType::Pos(_), None) => pos_fields.push(Field::new(name, FieldType::Pos(pos_fields.len()), desc)),
-            (FieldType::Spaces(_), None) => pos_fields.push(Field::new(name, FieldType::Spaces(pos_fields.len()), desc))
+            (FieldType::Var, None) => {
+                return Err(format!(
+                    "Missing expected argument {name}. Pass this in with --{name}=<value>"
+                )
+                .into())
+            }
+            (FieldType::Pos(_) | FieldType::Spaces(_), Some(var)) => {
+                drop(fields.insert(name.to_owned(), var))
+            }
+            (FieldType::Pos(_), None) => {
+                pos_fields.push(Field::new(name, FieldType::Pos(pos_fields.len()), desc))
+            }
+            (FieldType::Spaces(_), None) => {
+                pos_fields.push(Field::new(name, FieldType::Spaces(pos_fields.len()), desc))
+            }
         }
     }
 
     // Now go through the remaining ordered arguments with new positions and pick them out
-    for Field {name, field_type, ..} in pos_fields {
+    for Field {
+        name, field_type, ..
+    } in pos_fields
+    {
         match field_type {
             FieldType::Var => unreachable!(),
-            FieldType::Pos(pos) if pos < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()].clone())),
-            FieldType::Spaces(pos) if pos < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()..].join(" "))),
-            _ => return Err(format!("Not enough arguments: missing expected argument {name}").into()),
+            FieldType::Pos(pos) if pos < ordered_args.len() => {
+                drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()].clone()))
+            }
+            FieldType::Spaces(pos) if pos < ordered_args.len() => {
+                drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()..].join(" ")))
+            }
+            _ => {
+                return Err(
+                    format!("Not enough arguments: missing expected argument {name}").into(),
+                )
+            }
         };
     }
 
@@ -256,7 +293,7 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>, poss
         args: ordered_args,
         vars: assignments,
         fields,
-        optionals
+        optionals,
     };
 
     Ok(out)
@@ -285,28 +322,27 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
     println!("{}\n", command.desc);
     println!("Syntax: \t{}", make_syntax_string(&cmd_name, command));
 
-    let (vars, mut poses): (Vec<&Field>, Vec<&Field>) = 
-        command.expected_fields
-            .iter()
-            .partition(|f| f.field_type == FieldType::Var);
+    let (vars, mut poses): (Vec<&Field>, Vec<&Field>) = command
+        .expected_fields
+        .iter()
+        .partition(|f| f.field_type == FieldType::Var);
 
-    poses.sort_by_key(|f| {
-        match f.field_type {
-            FieldType::Pos(pos) => pos,
-            FieldType::Spaces(pos) => pos,
-            _ => unreachable!()
-        }
+    poses.sort_by_key(|f| match f.field_type {
+        FieldType::Pos(pos) => pos,
+        FieldType::Spaces(pos) => pos,
+        _ => unreachable!(),
     });
 
-    let cond_fields = poses.iter()
-        .filter(|f| f.condition.is_some()).copied()
+    let cond_fields = poses
+        .iter()
+        .filter(|f| f.condition.is_some())
+        .copied()
         .collect::<Vec<&Field>>();
-    
-    let mut var_names: Vec<(String, String)> = 
-        vars
-            .iter()
-            .map(|f| (f.name.to_owned(), f.desc.to_owned()))
-            .collect();
+
+    let mut var_names: Vec<(String, String)> = vars
+        .iter()
+        .map(|f| (f.name.to_owned(), f.desc.to_owned()))
+        .collect();
 
     var_names.sort();
 
@@ -340,7 +376,10 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
 
         for field in cond_fields {
             let cond = field.condition.as_ref().unwrap();
-            println!("\t--{} (instead of <{}>)\n\t\t{}", cond.disable_flag, field.name, cond.desc);
+            println!(
+                "\t--{} (instead of <{}>)\n\t\t{}",
+                cond.disable_flag, field.name, cond.desc
+            );
         }
     }
 
@@ -368,7 +407,7 @@ fn make_syntax_string<T>(name: &String, command: &Command<T>) -> String {
     for field in &command.optionals {
         let placeholder = match &field.placeholder {
             None => String::from("value"),
-            Some(placeholder) => placeholder.clone()
+            Some(placeholder) => placeholder.clone(),
         };
 
         out.push(' ');
@@ -379,17 +418,23 @@ fn make_syntax_string<T>(name: &String, command: &Command<T>) -> String {
     for _ in 0..names.capacity() {
         names.push(String::from(""));
     }
-    
-    for Field { name, field_type, desc: _, condition } in &command.expected_fields {
+
+    for Field {
+        name,
+        field_type,
+        desc: _,
+        condition,
+    } in &command.expected_fields
+    {
         let format_name = match condition {
             None => format!("<{}>", name),
-            Some(cond) => format!("<--{}|{}>", cond.disable_flag, name)
+            Some(cond) => format!("<--{}|{}>", cond.disable_flag, name),
         };
 
         match field_type {
             FieldType::Pos(pos) => names[pos.to_owned()] = format_name,
             FieldType::Spaces(pos) => names[pos.to_owned()] = format_name,
-            FieldType::Var => ()
+            FieldType::Var => (),
         };
     }
 

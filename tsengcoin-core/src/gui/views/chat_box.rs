@@ -1,19 +1,25 @@
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
+use crate::{
+    gui::views::BasicVisible,
+    v1::{
+        chain_request::{make_encrypted_chain_req, ChatMessage, ChatSession},
+        encrypted_msg::{ChainChatReq, ChainRequest},
+        request::send_new_txn,
+        state::State,
+    },
+    wallet::Address,
+};
 use basic_visible_derive::BasicVisible;
-use crate::v1::chain_request::{make_encrypted_chain_req, ChatSession, ChatMessage};
-use crate::v1::encrypted_msg::{ChainRequest, ChainChatReq};
-use crate::v1::request::send_new_txn;
-use crate::v1::state::State;
-use crate::gui::views::BasicVisible;
-use crate::wallet::Address;
-use fltk::enums::{LabelType, Color, Align};
-use fltk::prelude::{WidgetExt, GroupExt, InputExt};
-use fltk::window::Window;
-use fltk::output::MultilineOutput;
-use fltk::input::Input;
-use fltk::button::ReturnButton;
-use fltk::group::{Group};
+use fltk::{
+    button::ReturnButton,
+    enums::{Align, Color, LabelType},
+    group::Group,
+    input::Input,
+    output::MultilineOutput,
+    prelude::{GroupExt, InputExt, WidgetExt},
+    window::Window,
+};
 
 const TRUNCATE_AFTER: usize = 10;
 
@@ -22,18 +28,22 @@ pub struct ChatBoxUI {
     pub win: Window,
     pub output: MultilineOutput,
     pub input: Input,
-    pub send_btn: ReturnButton
+    pub send_btn: ReturnButton,
 }
 
 impl ChatBoxUI {
     pub fn new(sender: Address, sender_name: String, state_arc: &Arc<Mutex<State>>) -> Self {
-        let mut win = Window::default().with_label(&format!("Chat with {}", &sender_name)).with_size(400, 300);
+        let mut win = Window::default()
+            .with_label(&format!("Chat with {}", &sender_name))
+            .with_size(400, 300);
         let whole_group = Group::default().with_pos(0, 0).with_size(400, 300);
 
         // TODO: Scrollbar
         let mut scrollbar = Group::default().with_pos(0, 0).with_size(400, 260);
 
-        let mut output = MultilineOutput::default().with_pos(0, 0).with_size(400, 260);
+        let mut output = MultilineOutput::default()
+            .with_pos(0, 0)
+            .with_size(400, 260);
         output.set_label_type(LabelType::None);
         output.set_color(Color::by_index(46));
         output.set_align(Align::TopLeft);
@@ -52,7 +62,10 @@ impl ChatBoxUI {
         let mut input_clone = input.clone();
         let mut output_clone = output.clone();
 
-        let mut button = ReturnButton::default().with_pos(330, 270).with_size(70, 30).with_label("Send");
+        let mut button = ReturnButton::default()
+            .with_pos(330, 270)
+            .with_size(70, 30)
+            .with_label("Send");
         button.set_color(Color::by_index(230));
 
         button.set_callback(move |_| {
@@ -64,7 +77,7 @@ impl ChatBoxUI {
             }
 
             let chain_req = ChainRequest::ChainChat(ChainChatReq {
-                msg: msg_out.clone()
+                msg: msg_out.clone(),
             });
 
             let enc_req = match make_encrypted_chain_req(chain_req, sender, &mut state) {
@@ -88,7 +101,7 @@ impl ChatBoxUI {
             let session = state.friends.chat_sessions.get_mut(&sender_name).unwrap();
             session.messages.push(ChatMessage {
                 sender: String::from("You"),
-                message: msg_out
+                message: msg_out,
             });
 
             input_clone.set_value("");
@@ -107,10 +120,10 @@ impl ChatBoxUI {
             win,
             output,
             input,
-            send_btn: button
+            send_btn: button,
         }
     }
-    
+
     pub fn set_messages(&mut self, session: &ChatSession) {
         let txt = chat_session_to_multiline(session);
         self.output.set_value(&txt);

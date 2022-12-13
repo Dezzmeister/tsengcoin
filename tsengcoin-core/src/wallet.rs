@@ -1,10 +1,18 @@
-use std::{error::Error, path::Path, num::NonZeroU32, fs::File, io::Write};
+use std::{error::Error, fs::File, io::Write, num::NonZeroU32, path::Path};
 
-use ring::{digest::{Context, SHA256}, aead::OpeningKey};
-use ring::{pbkdf2, digest, aead::{SealingKey, AES_256_GCM, UnboundKey, BoundKey, Nonce, NonceSequence, Aad, NONCE_LEN}, error::Unspecified};
-use ring::signature::{ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair};
-use ripemd::{Ripemd160, Digest};
-use base58check::{ToBase58Check, FromBase58Check, FromBase58CheckError};
+use base58check::{FromBase58Check, FromBase58CheckError, ToBase58Check};
+use ring::{
+    aead::{
+        Aad, BoundKey, Nonce, NonceSequence, OpeningKey, SealingKey, UnboundKey, AES_256_GCM,
+        NONCE_LEN,
+    },
+    digest,
+    digest::{Context, SHA256},
+    error::Unspecified,
+    pbkdf2,
+    signature::{EcdsaKeyPair, ECDSA_P256_SHA256_ASN1_SIGNING},
+};
+use ripemd::{Digest, Ripemd160};
 
 /// Bitcoin uses a version prefix of 0x00 for wallets and 0x05 for P2SH addresses (and some other prefixes for other things).
 /// None of the values in between are used as far as we know, so we took 0x03 for
@@ -27,8 +35,7 @@ pub type Hash256 = [u8; 32];
 
 pub type Address = Hash160;
 
-struct NonceGen {
-}
+struct NonceGen {}
 
 impl NonceSequence for NonceGen {
     fn advance(&mut self) -> Result<Nonce, Unspecified> {
@@ -44,11 +51,14 @@ pub fn load_keypair(password: &str, path: &str) -> Result<EcdsaKeyPair, Box<dyn 
     pbkdf2::derive(PBKDF2_ALG, rounds, &salt, password.as_bytes(), &mut key);
 
     let unbound_key = UnboundKey::new(&AES_256_GCM, &key).expect("Failed to create symmetric key");
-    let mut opening_key = OpeningKey::new(unbound_key, NonceGen{});
+    let mut opening_key = OpeningKey::new(unbound_key, NonceGen {});
 
-    let keypair_decrypted = opening_key.open_in_place(Aad::empty(), &mut keypair_ciphertext).expect("Failed to decrypt keypair file");
+    let keypair_decrypted = opening_key
+        .open_in_place(Aad::empty(), &mut keypair_ciphertext)
+        .expect("Failed to decrypt keypair file");
     let alg = &ECDSA_P256_SHA256_ASN1_SIGNING;
-    let keypair = EcdsaKeyPair::from_pkcs8(alg, keypair_decrypted).expect("Failed to create ECDSA keypair");
+    let keypair =
+        EcdsaKeyPair::from_pkcs8(alg, keypair_decrypted).expect("Failed to create ECDSA keypair");
 
     Ok(keypair)
 }
@@ -62,20 +72,25 @@ pub fn create_keypair(password: &str, save_to: &str) -> Result<EcdsaKeyPair, Box
     let rounds = NonZeroU32::new(PBKDF2_ROUNDS).unwrap();
     let mut key: Key = [0; CREDENTIAL_LEN];
     pbkdf2::derive(PBKDF2_ALG, rounds, &salt, password.as_bytes(), &mut key);
-    
+
     let rng = ring::rand::SystemRandom::new();
     let alg = &ECDSA_P256_SHA256_ASN1_SIGNING;
     let pkcs8 = EcdsaKeyPair::generate_pkcs8(alg, &rng).expect("Failed to generate ECDSA pkcs8");
-    let keypair = EcdsaKeyPair::from_pkcs8(alg, pkcs8.as_ref()).expect("Failed to create ECDSA keypair");
+    let keypair =
+        EcdsaKeyPair::from_pkcs8(alg, pkcs8.as_ref()).expect("Failed to create ECDSA keypair");
 
     let unbound_key = UnboundKey::new(&AES_256_GCM, &key).expect("Failed to create symmetric key");
-    let mut sealing_key = SealingKey::new(unbound_key, NonceGen{});
+    let mut sealing_key = SealingKey::new(unbound_key, NonceGen {});
 
     let mut data = pkcs8.as_ref().to_vec();
-    sealing_key.seal_in_place_append_tag(Aad::empty(), &mut data).unwrap();
+    sealing_key
+        .seal_in_place_append_tag(Aad::empty(), &mut data)
+        .unwrap();
 
     let mut keypair_file = File::create(save_to).expect("Failed to create keypair file");
-    keypair_file.write_all(&data).expect("Failed to write to keypair file");
+    keypair_file
+        .write_all(&data)
+        .expect("Failed to write to keypair file");
 
     Ok(keypair)
 }
@@ -115,7 +130,7 @@ pub fn b58c_to_address(b58c: String) -> Result<Address, Box<dyn Error>> {
             out[offset..].copy_from_slice(&bytes);
 
             Ok(out)
-        },
+        }
     }
 }
 

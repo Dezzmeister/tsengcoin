@@ -1,18 +1,19 @@
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
-use fltk::enums::{Align};
-use fltk::prelude::{WidgetExt, WidgetBase, InputExt, WindowExt, GroupExt};
-use fltk::window::Window;
-use fltk::input::IntInput;
-use fltk::button::Button;
+use fltk::{
+    button::Button,
+    enums::Align,
+    input::IntInput,
+    prelude::{GroupExt, InputExt, WidgetBase, WidgetExt, WindowExt},
+    window::Window,
+};
 
-use crate::v1::state::State;
+use crate::{gui::views::BasicVisible, v1::state::State};
 use basic_visible_derive::BasicVisible;
-use crate::gui::views::BasicVisible;
 
 #[derive(BasicVisible)]
 pub struct SettingsUI {
-    pub win: Window
+    pub win: Window,
 }
 
 impl SettingsUI {
@@ -49,7 +50,7 @@ impl SettingsUI {
 
             let new_chain_amount = chain_req_input.value().parse::<u64>().unwrap_or(1);
             let new_exclusivity = ui_to_exclusivity(&exclusivity_input.value());
-            
+
             state.friends.chain_req_amount = new_chain_amount;
             state.friends.exclusivity = new_exclusivity;
 
@@ -59,9 +60,7 @@ impl SettingsUI {
         win.make_modal(true);
         win.end();
 
-        Self {
-            win
-        }
+        Self { win }
     }
 }
 
@@ -69,13 +68,13 @@ fn ui_to_exclusivity(ui: &str) -> u64 {
     let val = ui.parse::<i64>().unwrap_or(1);
     match val < 0 {
         true => u64::MAX,
-        false => val as u64
+        false => val as u64,
     }
 }
 
 fn exclusivity_to_ui(exclusivity: u64) -> String {
     match exclusivity == u64::MAX {
         false => format!("{}", exclusivity),
-        true => String::from("-1")
+        true => String::from("-1"),
     }
 }

@@ -1,12 +1,18 @@
-use regex::Regex;
-use ring::{digest::{Context, SHA256}, signature::EcdsaKeyPair};
-use serde::{Serialize, Deserialize};
-use std::{mem::{size_of, size_of_val}, error::Error};
 use lazy_static::lazy_static;
+use regex::Regex;
+use ring::{
+    digest::{Context, SHA256},
+    signature::EcdsaKeyPair,
+};
+use serde::{Deserialize, Serialize};
+use std::{
+    error::Error,
+    mem::{size_of, size_of_val},
+};
 
-use crate::wallet::{Hash256, Address};
+use crate::wallet::{Address, Hash256};
 
-use super::{VERSION, state::State, block::Block};
+use super::{block::Block, state::State, VERSION};
 
 pub const BLOCK_REWARD: u64 = 1000;
 pub const MAX_META_LENGTH: usize = 1024;
@@ -35,7 +41,7 @@ pub struct ConfirmedTransaction {
     pub block: Hash256,
     pub txn: Transaction,
     pub chain_idx: usize,
-    pub confirmations: usize
+    pub confirmations: usize,
 }
 
 /// A transaction before signing. Meant to be serialized and signed that way. The inputs are not signed
@@ -53,13 +59,13 @@ pub struct UnhashedTransaction {
     pub version: u32,
     pub inputs: Vec<TxnInput>,
     pub outputs: Vec<TxnOutput>,
-    pub meta: String
+    pub meta: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TxnOutput {
     pub amount: u64,
-    pub lock_script: Script
+    pub lock_script: Script,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -71,13 +77,13 @@ pub struct TxnInput {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ScriptType {
-    TsengScript
+    TsengScript,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Script {
     pub code: String,
-    pub script_type: ScriptType
+    pub script_type: ScriptType,
 }
 
 /// Pool of unspent transaction outputs (UTXOs). UTXOs are updated whenever a new transaction is validated
@@ -98,7 +104,7 @@ pub struct TransactionIndex {
     pub txn: Hash256,
     /// The indices of the unspent outputs in the given transaction. If this vector is ever empty,
     /// then the entire [TransactionIndex] should be removed from the UTXO pool.
-    /// 
+    ///
     /// Note that this is an array of indices into ANOTHER array
     pub outputs: Vec<usize>,
 }
@@ -109,17 +115,17 @@ pub struct UTXOWindow {
     pub block: Option<Hash256>,
     pub txn: Hash256,
     pub output: usize,
-    pub amount: u64
+    pub amount: u64,
 }
 
 impl Transaction {
     pub fn size(&self) -> usize {
-        size_of_val(&self.version) +
-        self.inputs.iter().fold(0, |a, e| a + e.size()) +
-        self.outputs.iter().fold(0, |a, e| a + e.size()) +
-        self.meta.len() +
-        size_of::<usize>() +
-        size_of_val(&self.hash)
+        size_of_val(&self.version)
+            + self.inputs.iter().fold(0, |a, e| a + e.size())
+            + self.outputs.iter().fold(0, |a, e| a + e.size())
+            + self.meta.len()
+            + size_of::<usize>()
+            + size_of_val(&self.hash)
     }
 }
 
@@ -137,30 +143,26 @@ impl UnhashedTransaction {
 
 impl TxnOutput {
     pub fn size(&self) -> usize {
-        size_of_val(&self.amount) + 
-        self.lock_script.size()
+        size_of_val(&self.amount) + self.lock_script.size()
     }
 }
 
 impl TxnInput {
     pub fn size(&self) -> usize {
-        size_of_val(&self.txn_hash) + 
-        size_of_val(&self.output_idx) + 
-        self.unlock_script.size()
+        size_of_val(&self.txn_hash) + size_of_val(&self.output_idx) + self.unlock_script.size()
     }
 }
 
 impl Script {
     pub fn size(&self) -> usize {
-        self.code.len() +
-        size_of::<usize>() +
-        size_of_val(&self.script_type)
+        self.code.len() + size_of::<usize>() + size_of_val(&self.script_type)
     }
 }
 
 impl UTXOPool {
-    pub fn find_txn_index<T: PartialEq>(&'_ self, txn: T) -> Option<&'_ TransactionIndex> 
-        where Hash256: PartialEq<T>
+    pub fn find_txn_index<T: PartialEq>(&'_ self, txn: T) -> Option<&'_ TransactionIndex>
+    where
+        Hash256: PartialEq<T>,
     {
         self.utxos.iter().find(|t| t.txn == txn)
     }
@@ -174,16 +176,24 @@ impl UTXOPool {
             let txn_idx = TransactionIndex {
                 block: None,
                 txn: tx.hash,
-                outputs: vec![0]
+                outputs: vec![0],
             };
 
             self.utxos.push(txn_idx);
             return;
         }
         for input in &tx.inputs {
-            let utxo_pos = self.utxos.iter().position(|u| u.txn == input.txn_hash).unwrap();
+            let utxo_pos = self
+                .utxos
+                .iter()
+                .position(|u| u.txn == input.txn_hash)
+                .unwrap();
             let utxo = &mut self.utxos[utxo_pos];
-            let output_pos = utxo.outputs.iter().position(|i| *i == input.output_idx).unwrap();
+            let output_pos = utxo
+                .outputs
+                .iter()
+                .position(|i| *i == input.output_idx)
+                .unwrap();
 
             utxo.outputs.remove(output_pos);
 
@@ -206,7 +216,7 @@ impl UTXOPool {
             let txn_idx = TransactionIndex {
                 block: Some(*block),
                 txn: tx.hash,
-                outputs: vec![0]
+                outputs: vec![0],
             };
 
             self.utxos.push(txn_idx);
@@ -214,9 +224,17 @@ impl UTXOPool {
         }
 
         for input in &tx.inputs {
-            let utxo_pos = self.utxos.iter().position(|u| u.txn == input.txn_hash).unwrap();
+            let utxo_pos = self
+                .utxos
+                .iter()
+                .position(|u| u.txn == input.txn_hash)
+                .unwrap();
             let utxo = &mut self.utxos[utxo_pos];
-            let output_pos = utxo.outputs.iter().position(|i| *i == input.output_idx).unwrap();
+            let output_pos = utxo
+                .outputs
+                .iter()
+                .position(|i| *i == input.output_idx)
+                .unwrap();
 
             utxo.outputs.remove(output_pos);
 
@@ -285,7 +303,7 @@ impl From<Transaction> for UnhashedTransaction {
             version: txn.version,
             inputs: txn.inputs,
             outputs: txn.outputs,
-            meta: txn.meta
+            meta: txn.meta,
         }
     }
 }
@@ -296,7 +314,7 @@ impl From<&Transaction> for UnhashedTransaction {
             version: txn.version,
             inputs: txn.inputs.clone(),
             outputs: txn.outputs.clone(),
-            meta: txn.meta.clone()
+            meta: txn.meta.clone(),
         }
     }
 }
@@ -358,25 +376,21 @@ fn hex_option(opt: Option<Hash256>) -> Option<String> {
 
 /// The size of a coinbase transaction with an empty meta field
 pub fn coinbase_size_estimate() -> usize {
-    lazy_static!{
+    lazy_static! {
         static ref TXN: Transaction = Transaction {
             version: VERSION,
-            inputs: vec![
-                TxnInput {
-                    txn_hash: [0; 32],
-                    output_idx: COINBASE_OUTPUT_IDX,
-                    unlock_script: Script {
-                        code: String::from(""),
-                        script_type: ScriptType::TsengScript
-                    }
+            inputs: vec![TxnInput {
+                txn_hash: [0; 32],
+                output_idx: COINBASE_OUTPUT_IDX,
+                unlock_script: Script {
+                    code: String::from(""),
+                    script_type: ScriptType::TsengScript
                 }
-            ],
-            outputs: vec![
-                TxnOutput {
-                    amount: 0,
-                    lock_script: make_p2pkh_lock(&[0; 20])
-                }
-            ],
+            }],
+            outputs: vec![TxnOutput {
+                amount: 0,
+                lock_script: make_p2pkh_lock(&[0; 20])
+            }],
             meta: String::from(""),
             hash: [0; 32]
         };
@@ -387,7 +401,12 @@ pub fn coinbase_size_estimate() -> usize {
 
 /// The coinbase transaction is the transaction in which a miner receives a block reward. The output amount
 /// is the block reward plus the transaction fees.
-pub fn make_coinbase_txn(winner: &Address, meta: String, fees: u64, extra_nonce: [u8; 32]) -> Transaction {
+pub fn make_coinbase_txn(
+    winner: &Address,
+    meta: String,
+    fees: u64,
+    extra_nonce: [u8; 32],
+) -> Transaction {
     let input = TxnInput {
         txn_hash: [0; 32],
         output_idx: COINBASE_OUTPUT_IDX,
@@ -401,7 +420,7 @@ pub fn make_coinbase_txn(winner: &Address, meta: String, fees: u64, extra_nonce:
 
     let output = TxnOutput {
         amount: BLOCK_REWARD + fees,
-        lock_script: make_p2pkh_lock(winner)
+        lock_script: make_p2pkh_lock(winner),
     };
 
     let mut out = Transaction {
@@ -413,7 +432,8 @@ pub fn make_coinbase_txn(winner: &Address, meta: String, fees: u64, extra_nonce:
     };
 
     let unhashed: UnhashedTransaction = (&out).into();
-    let unhashed_bytes = bincode::serialize(&unhashed).expect("Failed to make coinbase transaction hash");
+    let unhashed_bytes =
+        bincode::serialize(&unhashed).expect("Failed to make coinbase transaction hash");
     let mut context = Context::new(&SHA256);
     context.update(&unhashed_bytes);
     let digest = context.finish();
@@ -436,10 +456,11 @@ pub fn make_p2pkh_lock(address: &Address) -> Script {
 }
 
 fn is_p2pkh_lock(code: &str) -> bool {
-    lazy_static!{
-        static ref RE: Regex = Regex::new(r"DUP HASH160 (\d|[a-f]|[A-F]){40} REQUIRE_EQUAL CHECKSIG").unwrap();
+    lazy_static! {
+        static ref RE: Regex =
+            Regex::new(r"DUP HASH160 (\d|[a-f]|[A-F]){40} REQUIRE_EQUAL CHECKSIG").unwrap();
     };
-    
+
     RE.is_match(code)
 }
 
@@ -450,14 +471,14 @@ pub fn make_p2pkh_unlock(sig: Vec<u8>, pubkey: Vec<u8>) -> Script {
 
     Script {
         code: script_text,
-        script_type: ScriptType::TsengScript
+        script_type: ScriptType::TsengScript,
     }
 }
 
 /// P2PKH transactions generated by the software must use the full 40-byte hex representation
 /// of an address. Any leading zeroes are kept.
 pub fn get_p2pkh_addr(code: &str) -> Option<Address> {
-    lazy_static!{
+    lazy_static! {
         static ref RE: Regex = Regex::new(r"(\d|[a-f]|[A-F]){40}").unwrap();
     };
 
@@ -465,11 +486,10 @@ pub fn get_p2pkh_addr(code: &str) -> Option<Address> {
         return None;
     }
 
-    let caps = 
-        match RE.captures(code) {
-            None => return None,
-            Some(caps) => caps
-        };
+    let caps = match RE.captures(code) {
+        None => return None,
+        Some(caps) => caps,
+    };
 
     let addr_vec = hex::decode(&caps[0]).unwrap();
     let mut out: Address = [0; 20];
@@ -483,35 +503,36 @@ pub fn get_p2pkh_addr(code: &str) -> Option<Address> {
 /// of a P2PKH transaction because the lock script will contain the recipient's address, so we can
 /// have a function that will identify any P2PKH transactions addressed to the recipient.
 pub fn p2pkh_utxos_for_addr(state: &State, addr: Address) -> Vec<UTXOWindow> {
-    state.blockchain.utxo_pool.utxos
+    state
+        .blockchain
+        .utxo_pool
+        .utxos
         .iter()
         // We will build our result by accumulating a vec of pointers to individual UTXO outputs (UTXOWindows)
         .fold(vec![] as Vec<UTXOWindow>, |mut a, u| {
             let txn = state.get_pending_or_confirmed_txn(u.txn).unwrap();
-            let mut outputs = 
-                u.outputs
-                    .iter()
-                    // Get the transaction output and keep the index
-                    .map(|idx| (txn.outputs[*idx].clone(), idx))
-                    // Filter any transaction outputs that we can't unlock with P2PKH
-                    .filter(|(out, _)| {
-                        let dest_addr = get_p2pkh_addr(&out.lock_script.code);
-                        match dest_addr {
-                            None => false,
-                            Some(dest) => dest == addr
-                        }
-                    })
-                    // Now we have transaction outputs which we can unlock. Convert these to UTXOWindows
-                    // using the output index we saved earlier
-                    .map(|(out, idx)| {
-                        UTXOWindow {
-                            block: u.block,
-                            txn: u.txn,
-                            output: *idx,
-                            amount: out.amount
-                        }
-                    })
-                    .collect::<Vec<UTXOWindow>>();
+            let mut outputs = u
+                .outputs
+                .iter()
+                // Get the transaction output and keep the index
+                .map(|idx| (txn.outputs[*idx].clone(), idx))
+                // Filter any transaction outputs that we can't unlock with P2PKH
+                .filter(|(out, _)| {
+                    let dest_addr = get_p2pkh_addr(&out.lock_script.code);
+                    match dest_addr {
+                        None => false,
+                        Some(dest) => dest == addr,
+                    }
+                })
+                // Now we have transaction outputs which we can unlock. Convert these to UTXOWindows
+                // using the output index we saved earlier
+                .map(|(out, idx)| UTXOWindow {
+                    block: u.block,
+                    txn: u.txn,
+                    output: *idx,
+                    amount: out.amount,
+                })
+                .collect::<Vec<UTXOWindow>>();
 
             a.append(&mut outputs);
             a
@@ -519,10 +540,14 @@ pub fn p2pkh_utxos_for_addr(state: &State, addr: Address) -> Vec<UTXOWindow> {
 }
 
 /// Collect enough UTXOs to meet the required amount to make a transaction. If we don't have enough UTXOs
-/// to meet the threshold, return None. We use a simple algorithm that takes transactions starting from 
-/// the earliest UTXOs. This enables future optimizations in which the UTXO pool is calculated from 
+/// to meet the threshold, return None. We use a simple algorithm that takes transactions starting from
+/// the earliest UTXOs. This enables future optimizations in which the UTXO pool is calculated from
 /// a later block in the blockchain because all early transaction outputs have already been spent.
-pub fn collect_enough_change(state: &State, addr: Address, threshold: u64) -> Option<Vec<UTXOWindow>> {
+pub fn collect_enough_change(
+    state: &State,
+    addr: Address,
+    threshold: u64,
+) -> Option<Vec<UTXOWindow>> {
     let my_utxos = p2pkh_utxos_for_addr(state, addr);
 
     let mut amount = 0;
@@ -540,11 +565,16 @@ pub fn collect_enough_change(state: &State, addr: Address, threshold: u64) -> Op
     None
 }
 
-pub fn sign_txn(txn: &UnsignedTransaction, signer: &EcdsaKeyPair) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn sign_txn(
+    txn: &UnsignedTransaction,
+    signer: &EcdsaKeyPair,
+) -> Result<Vec<u8>, Box<dyn Error>> {
     let bytes = bincode::serialize(txn)?;
     let rng = ring::rand::SystemRandom::new();
-    let sig = signer.sign(&rng, &bytes).expect("Failed to sign transaction");
-    
+    let sig = signer
+        .sign(&rng, &bytes)
+        .expect("Failed to sign transaction");
+
     Ok(sig.as_ref().to_vec())
 }
 
@@ -563,20 +593,18 @@ pub fn hash_txn(txn: &UnhashedTransaction) -> Result<Hash256, Box<dyn Error>> {
 
 /// Rebuild the entire UTXO pool from the blocks given. Assumes that the first
 /// block is the genesis block containing only one transaction.
-/// 
+///
 /// This can be improved but for now it's conceptually simple and it does the job.
 /// If the blockchain were to grow though we wouldn't want to be rebuilding the entire
 /// UTXO pool from the first block every time we try to add a new block. We would need
 /// a better data structure that allows us to undo the latest changes to the UTXO pool.
 pub fn build_utxos_from_confirmed(blocks: &[Block]) -> UTXOPool {
     let mut pool = UTXOPool {
-        utxos: vec![
-            TransactionIndex {
-                block: Some(blocks[0].header.hash),
-                txn: blocks[0].transactions[0].hash,
-                outputs: vec![0]
-            }
-        ],
+        utxos: vec![TransactionIndex {
+            block: Some(blocks[0].header.hash),
+            txn: blocks[0].transactions[0].hash,
+            outputs: vec![0],
+        }],
     };
 
     for block in &blocks[1..] {
@@ -604,9 +632,7 @@ pub fn compute_input_sum(txn: &Transaction, state: &State) -> u64 {
 }
 
 pub fn compute_output_sum(txn: &Transaction) -> u64 {
-    txn.outputs
-        .iter()
-        .fold(0, |a, e| a + e.amount)
+    txn.outputs.iter().fold(0, |a, e| a + e.amount)
 }
 
 // Assumes a valid transaction
@@ -616,23 +642,28 @@ pub fn compute_fee(txn: &Transaction, state: &State) -> u64 {
 
 /// Make an unsigned P2PKH transaction with one intended recipient (besides change back)
 /// Returns the unsigned transaction, input UTXOS, and transaction outputs.
-pub fn make_single_p2pkh_txn(dest: Address, amount: u64, fee: u64, state: &State) -> Result<(UnsignedTransaction, Vec<UTXOWindow>, Vec<TxnOutput>), Box<dyn Error>> {
+pub fn make_single_p2pkh_txn(
+    dest: Address,
+    amount: u64,
+    fee: u64,
+    state: &State,
+) -> Result<(UnsignedTransaction, Vec<UTXOWindow>, Vec<TxnOutput>), Box<dyn Error>> {
     let required_input = amount + fee;
 
     let change = match collect_enough_change(state, state.address, required_input) {
         None => {
             return Err("Not enough TsengCoin".into());
-        },
-        Some(utxos) => utxos
+        }
+        Some(utxos) => utxos,
     };
 
-    let actual_input = 
-        change
-            .iter()
-            .fold(0, |a, e| a + e.amount);
+    let actual_input = change.iter().fold(0, |a, e| a + e.amount);
 
     let lock_script = make_p2pkh_lock(&dest);
-    let mut outputs: Vec<TxnOutput> = vec![TxnOutput { amount, lock_script }];
+    let mut outputs: Vec<TxnOutput> = vec![TxnOutput {
+        amount,
+        lock_script,
+    }];
 
     let change_back = actual_input - required_input;
 
@@ -641,15 +672,19 @@ pub fn make_single_p2pkh_txn(dest: Address, amount: u64, fee: u64, state: &State
 
         outputs.push(TxnOutput {
             amount: change_back,
-            lock_script: my_lock_script
+            lock_script: my_lock_script,
         });
     }
 
-    Ok((UnsignedTransaction {
-        version: VERSION,
-        outputs: outputs.clone(),
-        meta: String::from("")
-    }, change, outputs))
+    Ok((
+        UnsignedTransaction {
+            version: VERSION,
+            outputs: outputs.clone(),
+            meta: String::from(""),
+        },
+        change,
+        outputs,
+    ))
 }
 
 /// Determines the address who created a transaction. Assumes the transaction is

@@ -1,11 +1,32 @@
-use std::{collections::HashMap, error::Error, net::{SocketAddr, IpAddr, Ipv4Addr}, sync::{Arc, mpsc::channel}, thread};
-use std::sync::Mutex;
+use std::{
+    collections::HashMap,
+    error::Error,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::{mpsc::channel, Arc, Mutex},
+    thread,
+};
 
 use ring::signature::KeyPair;
-use thread_priority::{ThreadPriority, ThreadBuilderExt};
+use thread_priority::{ThreadBuilderExt, ThreadPriority};
 
-use crate::{command::{CommandMap, Command, CommandInvocation, Field, FieldType, Flag, Condition, VarField}, tsengscript_interpreter::{execute, ExecutionResult, Token}, wallet::{address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair, Address}, v1::{request::{get_first_peers, discover, advertise_self, download_latest_blocks}, state::State, net::listen_for_connections, miners::{api::{start_miner, num_miners, miners}}}, gui::gui::{gui_req_loop, GUIState, main_gui_loop}};
 use super::session::listen_for_commands;
+use crate::{
+    command::{
+        Command, CommandInvocation, CommandMap, Condition, Field, FieldType, Flag, VarField,
+    },
+    gui::gui::{gui_req_loop, main_gui_loop, GUIState},
+    tsengscript_interpreter::{execute, ExecutionResult, Token},
+    v1::{
+        miners::api::{miners, num_miners, start_miner},
+        net::listen_for_connections,
+        request::{advertise_self, discover, download_latest_blocks, get_first_peers},
+        state::State,
+    },
+    wallet::{
+        address_from_public_key, address_to_b58c, b58c_to_address, create_keypair, load_keypair,
+        Address,
+    },
+};
 
 #[cfg(all(feature = "debug", feature = "cuda_miner"))]
 use super::cuda_debug::make_command_map as make_cuda_dbg_command_map;
@@ -13,13 +34,13 @@ use super::cuda_debug::make_command_map as make_cuda_dbg_command_map;
 fn run_script(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
     let script = invocation.get_field("script").unwrap();
     let show_stack = invocation.get_flag("show-stack");
-    let ExecutionResult{top, stack } = execute(&script, &vec![])?;
+    let ExecutionResult { top, stack } = execute(&script, &vec![])?;
 
     match top {
         None => println!("Stack was empty"),
         Some(Token::Bool(val)) => println!("Bool: {}", val),
         Some(Token::UByteSeq(bigint)) => println!("UByteSeq: {}", bigint),
-        Some(Token::Operator(_)) => println!("Result is an operator!")
+        Some(Token::Operator(_)) => println!("Result is an operator!"),
     };
 
     if show_stack {
@@ -29,7 +50,10 @@ fn run_script(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     Ok(())
 }
 
-fn random_test_address(_invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn random_test_address(
+    _invocation: &CommandInvocation,
+    _state: Option<()>,
+) -> Result<(), Box<dyn Error>> {
     let rand_bytes: [u8; 32] = rand::random();
     let address = address_from_public_key(&rand_bytes.to_vec());
 
@@ -58,7 +82,10 @@ fn b58c_decode(invocation: &CommandInvocation, _state: Option<()>) -> Result<(),
     Ok(())
 }
 
-fn create_address(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn create_address(
+    invocation: &CommandInvocation,
+    _state: Option<()>,
+) -> Result<(), Box<dyn Error>> {
     let path = invocation.get_field("keypair-path").unwrap();
     let password = invocation.get_field("password").unwrap();
     let keypair = create_keypair(&password, &path)?;
@@ -73,7 +100,10 @@ fn create_address(invocation: &CommandInvocation, _state: Option<()>) -> Result<
     Ok(())
 }
 
-fn test_load_keypair(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+fn test_load_keypair(
+    invocation: &CommandInvocation,
+    _state: Option<()>,
+) -> Result<(), Box<dyn Error>> {
     let path = invocation.get_field("keypair-path").unwrap();
     let password = invocation.get_field("password").unwrap();
     let keypair = load_keypair(&password, &path)?;
@@ -90,19 +120,30 @@ fn test_load_keypair(invocation: &CommandInvocation, _state: Option<()>) -> Resu
 }
 
 fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
-    let seed_ip = invocation.get_field("seed-ip").unwrap().parse::<IpAddr>().unwrap();
-    let seed_port = invocation.get_field("seed-port").unwrap().parse::<u16>().unwrap();
-    let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
+    let seed_ip = invocation
+        .get_field("seed-ip")
+        .unwrap()
+        .parse::<IpAddr>()
+        .unwrap();
+    let seed_port = invocation
+        .get_field("seed-port")
+        .unwrap()
+        .parse::<u16>()
+        .unwrap();
+    let listen_port = invocation
+        .get_field("listen-port")
+        .unwrap()
+        .parse::<u16>()
+        .unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
-    let wallet_password = invocation
-        .get_field("wallet-password")
-        .unwrap_or_else(||
-            fltk::dialog::password_default("Enter your wallet password", "").expect("Need to supply a password!")
-        );
+    let wallet_password = invocation.get_field("wallet-password").unwrap_or_else(|| {
+        fltk::dialog::password_default("Enter your wallet password", "")
+            .expect("Need to supply a password!")
+    });
     let with_gui = invocation.get_flag("gui");
     let gui_state = match with_gui {
         false => None,
-        true => Some(GUIState::new())
+        true => Some(GUIState::new()),
     };
     let miner_names = miners();
     let miner = match num_miners() {
@@ -129,12 +170,21 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     let seed_addr = SocketAddr::new(seed_ip, seed_port);
     let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
 
-    println!("Connecting to node at {} and starting bootstrap process", seed_addr);
+    println!(
+        "Connecting to node at {} and starting bootstrap process",
+        seed_addr
+    );
 
     let (gui_req_sender, gui_req_receiver) = channel();
     let (gui_res_sender, gui_res_receiver) = channel();
 
-    let (state, miner_receiver) = State::new(addr_me, keypair, gui_req_sender.clone(), gui_state, miner.clone());
+    let (state, miner_receiver) = State::new(
+        addr_me,
+        keypair,
+        gui_req_sender.clone(),
+        gui_state,
+        miner.clone(),
+    );
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -145,10 +195,14 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     download_latest_blocks(&state_arc)?;
 
     println!("Starting network listener thread");
-    thread::Builder::new().name(String::from("network-listener")).spawn(move || {
-        listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2).expect("Network listener thread crashed");
-        advertise_self(&state_arc_2).expect("Failed to advertise self to network");
-    }).unwrap();
+    thread::Builder::new()
+        .name(String::from("network-listener"))
+        .spawn(move || {
+            listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2)
+                .expect("Network listener thread crashed");
+            advertise_self(&state_arc_2).expect("Failed to advertise self to network");
+        })
+        .unwrap();
 
     println!("Bootstrapping complete\nStarting worker threads");
 
@@ -160,13 +214,17 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
             .name(String::from("miner"))
             .spawn_with_priority(ThreadPriority::Max, move |_| {
                 start_miner(&state_arc_miner, miner_receiver, &miner.unwrap());
-            }).unwrap();
+            })
+            .unwrap();
     }
 
-    thread::Builder::new().name(String::from("command")).spawn(move || {
-        println!("Type a command, or 'help' for a list of commands");
-        listen_for_commands(&state_arc_3);
-    }).unwrap();
+    thread::Builder::new()
+        .name(String::from("command"))
+        .spawn(move || {
+            println!("Type a command, or 'help' for a list of commands");
+            listen_for_commands(&state_arc_3);
+        })
+        .unwrap();
 
     if with_gui {
         main_gui_loop(state_arc);
@@ -178,17 +236,20 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 }
 
 fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
-    let listen_port = invocation.get_field("listen-port").unwrap().parse::<u16>().unwrap();
+    let listen_port = invocation
+        .get_field("listen-port")
+        .unwrap()
+        .parse::<u16>()
+        .unwrap();
     let wallet_path = invocation.get_field("wallet-path").unwrap();
-    let wallet_password = invocation
-        .get_field("wallet-password")
-        .unwrap_or_else(||
-            fltk::dialog::password_default("Enter your wallet password", "").expect("Need to supply a password!")
-        );
+    let wallet_password = invocation.get_field("wallet-password").unwrap_or_else(|| {
+        fltk::dialog::password_default("Enter your wallet password", "")
+            .expect("Need to supply a password!")
+    });
     let with_gui = invocation.get_flag("gui");
     let gui_state = match with_gui {
         false => None,
-        true => Some(GUIState::new())
+        true => Some(GUIState::new()),
     };
     let miner_names = miners();
     let miner = match num_miners() {
@@ -217,7 +278,13 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     let (gui_req_sender, gui_req_receiver) = channel();
     let (gui_res_sender, gui_res_receiver) = channel();
 
-    let (state, miner_receiver) = State::new(addr_me, keypair, gui_req_sender.clone(), gui_state, miner.clone());
+    let (state, miner_receiver) = State::new(
+        addr_me,
+        keypair,
+        gui_req_sender.clone(),
+        gui_state,
+        miner.clone(),
+    );
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
@@ -226,9 +293,13 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     println!("Skipping bootstrapping, because `start-seed` was used instead of `connect`. Run `connect` if you wish to connect to an existing TsengCoin network");
 
     println!("Starting network listener thread");
-    thread::Builder::new().name(String::from("network-listener")).spawn(move || {
-        listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2).expect("Network listener thread crashed");
-    }).unwrap();
+    thread::Builder::new()
+        .name(String::from("network-listener"))
+        .spawn(move || {
+            listen_for_connections(addr_me, &gui_req_sender, &gui_res_receiver, &state_arc_2)
+                .expect("Network listener thread crashed");
+        })
+        .unwrap();
 
     if miner.is_some() {
         let state_arc_miner = Arc::clone(&state_arc);
@@ -238,13 +309,17 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
             .name(String::from("miner"))
             .spawn_with_priority(ThreadPriority::Max, move |_| {
                 start_miner(&state_arc_miner, miner_receiver, &miner.unwrap());
-            }).unwrap();
+            })
+            .unwrap();
     }
 
-    thread::Builder::new().name(String::from("command")).spawn(move || {
-        println!("Type a command, or 'help' for a list of commands");
-        listen_for_commands(&state_arc_3);
-    }).unwrap();
+    thread::Builder::new()
+        .name(String::from("command"))
+        .spawn(move || {
+            println!("Type a command, or 'help' for a list of commands");
+            listen_for_commands(&state_arc_3);
+        })
+        .unwrap();
 
     if with_gui {
         main_gui_loop(state_arc);
@@ -259,38 +334,37 @@ pub fn make_command_map() -> CommandMap<()> {
     let mut out: CommandMap<()> = HashMap::new();
     let run_script_cmd: Command<()> = Command {
         processor: run_script,
-        expected_fields: vec![
-            Field::new(
-                "script",
-                FieldType::Spaces(0),
-                "Code written in TsengScript"
-            )
-        ],
-        flags: vec![
-            Flag::new("show-stack", "Print the contents of the stack when the program finishes")
-        ],
+        expected_fields: vec![Field::new(
+            "script",
+            FieldType::Spaces(0),
+            "Code written in TsengScript",
+        )],
+        flags: vec![Flag::new(
+            "show-stack",
+            "Print the contents of the stack when the program finishes",
+        )],
         optionals: vec![],
-        desc: String::from("Run a TsengScript program and see the output and stack trace")
+        desc: String::from("Run a TsengScript program and see the output and stack trace"),
     };
     let random_test_address_hex_cmd: Command<()> = Command {
         processor: random_test_address,
         expected_fields: vec![],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Generate a random test TsengCoin address in hex")
+        desc: String::from("Generate a random test TsengCoin address in hex"),
     };
     let b58c_encode_cmd: Command<()> = Command {
         processor: b58c_encode,
-        expected_fields: vec![
-            Field::new(
-                "hex-bytes",
-                FieldType::Pos(0),
-                "The hex string to be encoded. Do not include the '0x' prefix"
-            )
-        ],
+        expected_fields: vec![Field::new(
+            "hex-bytes",
+            FieldType::Pos(0),
+            "The hex string to be encoded. Do not include the '0x' prefix",
+        )],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Encode a hex string in base58check. The hex string is treated as a TsengCoin address")
+        desc: String::from(
+            "Encode a hex string in base58check. The hex string is treated as a TsengCoin address",
+        ),
     };
     let b58c_decode_cmd: Command<()> = Command {
         processor: b58c_decode,
@@ -351,12 +425,10 @@ pub fn make_command_map() -> CommandMap<()> {
     )];
     let mut connect_optionals = vec![];
     if num_miners == 1 {
-        connect_flags.append(&mut vec![
-            Flag::new(
-                "with-miner",
-                "Set this flag if you want to mine TsengCoin in the background"
-            )
-        ]);
+        connect_flags.append(&mut vec![Flag::new(
+            "with-miner",
+            "Set this flag if you want to mine TsengCoin in the background",
+        )]);
     } else if num_miners > 1 {
         let miners = miners();
         let placeholder = miner_placeholder(&miners);
@@ -434,7 +506,10 @@ pub fn make_command_map() -> CommandMap<()> {
     };
 
     out.insert(String::from("run-script"), run_script_cmd);
-    out.insert(String::from("random-test-address-hex"), random_test_address_hex_cmd);
+    out.insert(
+        String::from("random-test-address-hex"),
+        random_test_address_hex_cmd,
+    );
     out.insert(String::from("b58c-encode"), b58c_encode_cmd);
     out.insert(String::from("b58c-decode"), b58c_decode_cmd);
     out.insert(String::from("create-address"), create_address_cmd);

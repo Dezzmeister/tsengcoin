@@ -1,5 +1,5 @@
-pub mod top_level;
 pub mod session;
+pub mod top_level;
 
 #[cfg(feature = "debug")]
 pub mod debug;

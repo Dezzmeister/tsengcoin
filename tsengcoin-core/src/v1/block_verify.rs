@@ -1,21 +1,23 @@
-use chrono::{Utc};
+use chrono::Utc;
 
-use super::block::{RawBlockHeader, hash_block_header, MAX_BLOCK_SIZE, BLOCK_TIMESTAMP_TOLERANCE, make_merkle_root};
-use super::transaction::{BLOCK_REWARD, UnhashedTransaction, hash_txn, Transaction, build_utxos_from_confirmed, compute_input_sum};
-use super::txn_verify::{verify_transaction, check_pending_and_orphans};
-use super::{block_verify_error::BlockVerifyResult, block::Block, state::State};
+use super::{
+    block::{
+        hash_block_header, make_merkle_root, Block, RawBlockHeader, BLOCK_TIMESTAMP_TOLERANCE,
+        MAX_BLOCK_SIZE,
+    },
+    block_verify_error::BlockVerifyResult,
+    state::State,
+    transaction::{
+        build_utxos_from_confirmed, compute_input_sum, hash_txn, Transaction, UnhashedTransaction,
+        BLOCK_REWARD,
+    },
+    txn_verify::{check_pending_and_orphans, verify_transaction},
+};
 
-use super::block_verify_error::ErrorKind::IncorrectDifficulty;
-use super::block_verify_error::ErrorKind::FailedProofOfWork;
-use super::block_verify_error::ErrorKind::InvalidHeaderHash;
-use super::block_verify_error::ErrorKind::OldBlock;
-use super::block_verify_error::ErrorKind::TooLarge;
-use super::block_verify_error::ErrorKind::EmptyBlock;
-use super::block_verify_error::ErrorKind::TxnError;
-use super::block_verify_error::ErrorKind::OrphanTxn;
-use super::block_verify_error::ErrorKind::InvalidCoinbase;
-use super::block_verify_error::ErrorKind::InvalidCoinbaseAmount;
-use super::block_verify_error::ErrorKind::InvalidMerkleRoot;
+use super::block_verify_error::ErrorKind::{
+    EmptyBlock, FailedProofOfWork, IncorrectDifficulty, InvalidCoinbase, InvalidCoinbaseAmount,
+    InvalidHeaderHash, InvalidMerkleRoot, OldBlock, OrphanTxn, TooLarge, TxnError,
+};
 
 /// Verifies a new block. Returns true if the block is an orphan. Unlike [verify_transaction],
 /// this function will mutate the state. If the block is an orphan, it will add the block to the orphan
@@ -41,8 +43,8 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
         None => {
             state.blockchain.orphans.push(block);
             return Ok(true);
-        },
-        Some(data) => data
+        }
+        Some(data) => data,
     };
 
     // Get the blocks leading up to where this one should go
@@ -115,16 +117,16 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
             Ok(true) => {
                 restore_utxo_pool(state, &block_path, old_pending);
                 return Err(Box::new(OrphanTxn(txn.hash)));
-            },
+            }
             Err(error) => {
                 restore_utxo_pool(state, &block_path, old_pending);
                 return Err(Box::new(TxnError(error, txn.hash)));
-            },
-            _ => ()
+            }
+            _ => (),
         };
 
         // Now that the transaction is verified, find it in the pending txns pool and add
-        // the index to an array (if it exists in the pool). When the block has been validated, 
+        // the index to an array (if it exists in the pool). When the block has been validated,
         // these pending transactions will be removed from the pool. The transaction may also
         // exist in the orphan pool so we want to look there too.
         let pos_in_pending = old_pending.iter().position(|p| p.hash == txn.hash);
@@ -145,11 +147,8 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
         // Add up the input amounts and output amounts and compute the fee
         let input_sum: u64 = compute_input_sum(txn, state);
 
-        let output_sum = 
-            txn.outputs
-                .iter()
-                .fold(0, |a, e| a + e.amount);
-        
+        let output_sum = txn.outputs.iter().fold(0, |a, e| a + e.amount);
+
         total_fees += input_sum - output_sum;
     }
 
@@ -174,7 +173,10 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
 
     // The miner must have claimed the expected amount
     if output.amount != expected_amount {
-        return Err(Box::new(InvalidCoinbaseAmount(expected_amount, output.amount)));
+        return Err(Box::new(InvalidCoinbaseAmount(
+            expected_amount,
+            output.amount,
+        )));
     }
 
     // The reported transaction hash must match the actual hash
@@ -183,8 +185,8 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
         Err(_) => {
             restore_utxo_pool(state, &block_path, old_pending);
             return Err(Box::new(InvalidCoinbase));
-        },
-        Ok(hash) => hash
+        }
+        Ok(hash) => hash,
     };
 
     if coinbase.hash != expected_hash {
@@ -251,12 +253,15 @@ fn restore_utxo_pool(state: &mut State, utxo_blocks: &Vec<Block>, old_pending: V
             Ok(true) => {
                 println!("Unexpected orphan");
                 pending_to_remove.push(i);
-            },
+            }
             Err(err) => {
                 // This is weird and shouldn't happen
-                println!("Rejecting a pending transaction that was once valid: {}", err);
+                println!(
+                    "Rejecting a pending transaction that was once valid: {}",
+                    err
+                );
                 pending_to_remove.push(i);
-            },
+            }
             Ok(false) => {
                 state.blockchain.utxo_pool.update_unconfirmed(txn);
             }

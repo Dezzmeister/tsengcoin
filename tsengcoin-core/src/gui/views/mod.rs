@@ -1,8 +1,8 @@
 pub mod chat_box;
 pub mod main_box;
-pub mod settings;
 pub mod new_alias;
 pub mod new_chat;
+pub mod settings;
 
 pub trait BasicVisible {
     fn show(&mut self);
@@ -11,4 +11,3 @@ pub trait BasicVisible {
 
     fn shown(&self) -> bool;
 }
-

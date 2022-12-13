@@ -1,20 +1,34 @@
-use std::{net::{SocketAddr, TcpStream, TcpListener}, error::Error, cmp::min, sync::{mpsc::{Receiver, Sender}, Arc}};
-use std::sync::Mutex;
+use std::{
+    cmp::min,
+    error::Error,
+    net::{SocketAddr, TcpListener, TcpStream},
+    sync::{
+        mpsc::{Receiver, Sender},
+        Arc, Mutex,
+    },
+};
 
 use chrono::{DateTime, Utc};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
-use crate::{wallet::Hash256, gui::gui::{GUIResponse, GUIRequest}};
+use crate::{
+    gui::gui::{GUIRequest, GUIResponse},
+    wallet::Hash256,
+};
 
-use super::{request::{Request, send_req, GetAddrReq, send_msg}, response::{Response, handle_request}, state::State};
+use super::{
+    request::{send_msg, send_req, GetAddrReq, Request},
+    response::{handle_request, Response},
+    state::State,
+};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_NEIGHBORS: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct DistantNode {
-    pub addr: SocketAddr
+    pub addr: SocketAddr,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -35,7 +49,8 @@ impl std::fmt::Debug for Node {
             .field("addr", &self.addr)
             .field("last_send", &self.last_send)
             .field("best_height", &self.best_height)
-            .field("best_hash", &hash_debug).finish()
+            .field("best_hash", &hash_debug)
+            .finish()
     }
 }
 
@@ -61,7 +76,7 @@ impl DistantNode {
     pub fn send_req(&self, req: Request) -> Result<Response, Box<dyn Error>> {
         let stream = TcpStream::connect(self.addr)?;
         bincode::serialize_into(&stream, &req)?;
-        
+
         let res: Response = bincode::deserialize_from(&stream)?;
 
         Ok(res)
@@ -77,17 +92,13 @@ impl DistantNode {
 
 impl From<&Node> for DistantNode {
     fn from(node: &Node) -> Self {
-        DistantNode {
-            addr: node.addr
-        }
+        DistantNode { addr: node.addr }
     }
 }
 
 impl From<Node> for DistantNode {
     fn from(node: Node) -> Self {
-        DistantNode {
-            addr: node.addr
-        }
+        DistantNode { addr: node.addr }
     }
 }
 
@@ -111,12 +122,14 @@ impl PartialEq<SocketAddr> for DistantNode {
 #[derive(Debug)]
 pub struct Network {
     pub peers: Vec<Node>,
-    pub known_nodes: Vec<DistantNode>
+    pub known_nodes: Vec<DistantNode>,
 }
 
 impl Network {
-    pub fn remove<T: PartialEq>(&mut self, node: T) 
-        where Node: PartialEq<T>, DistantNode: PartialEq<T>
+    pub fn remove<T: PartialEq>(&mut self, node: T)
+    where
+        Node: PartialEq<T>,
+        DistantNode: PartialEq<T>,
     {
         if let Some(pos) = self.peers.iter().position(|n| *n == node) {
             drop(self.peers.remove(pos));
@@ -128,7 +141,9 @@ impl Network {
     }
 
     pub fn clean<T: PartialEq>(&mut self, me: T)
-        where Node: PartialEq<T>, DistantNode: PartialEq<T>
+    where
+        Node: PartialEq<T>,
+        DistantNode: PartialEq<T>,
     {
         self.remove(me);
         self.peers.dedup();
@@ -153,7 +168,11 @@ impl Network {
             .collect::<Vec<Result<Response, Box<bincode::ErrorKind>>>>()
     }
 
-    pub fn broadcast_except(&self, except: SocketAddr, req: &Request) -> Vec<Result<Response, Box<bincode::ErrorKind>>> {
+    pub fn broadcast_except(
+        &self,
+        except: SocketAddr,
+        req: &Request,
+    ) -> Vec<Result<Response, Box<bincode::ErrorKind>>> {
         self.peers
             .iter()
             .filter(|n| *n != except)
@@ -171,40 +190,48 @@ impl Network {
     /// Pick new peers at random from the list of known peers. If the network is large enough then we
     /// choose [MAX_NEIGHBORS] peers; if not, we choose all known nodes as peers. Then we send each prospective peer
     /// a 'GetAddr' request to get some crucial info. There may be several nodes, so this step is done in parallel.
-    /// We then wait for and collect the responses to these requests and loop over them. For any bad response, we 
+    /// We then wait for and collect the responses to these requests and loop over them. For any bad response, we
     /// drop the node from our list of known nodes. We keep the good responses and use them as our peers.
-    pub fn find_new_friends(&mut self, listen_port: u16, addr_me: SocketAddr, best_height: usize, best_hash: Hash256) {
+    pub fn find_new_friends(
+        &mut self,
+        listen_port: u16,
+        addr_me: SocketAddr,
+        best_height: usize,
+        best_hash: Hash256,
+    ) {
         self.shuffle();
         let num_peers = min(self.known_nodes.len(), MAX_NEIGHBORS);
-        let new_peers = 
-            self.known_nodes[0..num_peers]
-                .iter()
-                .map(|n| n.addr)
-                .collect::<Vec<SocketAddr>>();
+        let new_peers = self.known_nodes[0..num_peers]
+            .iter()
+            .map(|n| n.addr)
+            .collect::<Vec<SocketAddr>>();
 
         let results = crossbeam::scope(|scope| {
             new_peers
                 .iter()
-                .map(|addr| scope.spawn(move |_| {
-                    let req = Request::GetAddr(GetAddrReq {
-                        version: PROTOCOL_VERSION,
-                        addr_you: *addr,
-                        listen_port,
-                        best_height,
-                        best_hash
-                    });
+                .map(|addr| {
+                    scope.spawn(move |_| {
+                        let req = Request::GetAddr(GetAddrReq {
+                            version: PROTOCOL_VERSION,
+                            addr_you: *addr,
+                            listen_port,
+                            best_height,
+                            best_hash,
+                        });
 
-                    send_req(&req, addr)
-                }))
+                        send_req(&req, addr)
+                    })
+                })
                 .map(|t| t.join().unwrap())
                 .collect::<Vec<Result<Response, Box<bincode::ErrorKind>>>>()
-        }).unwrap();
+        })
+        .unwrap();
 
         self.peers.clear();
 
         for i in 0..results.len() {
             let result = &results[i];
-            
+
             match result {
                 Ok(Response::GetAddr(data)) => {
                     let addr_you = new_peers[i];
@@ -213,20 +240,21 @@ impl Network {
                         addr: addr_you,
                         last_send: Utc::now(),
                         best_height: Some(data.best_height),
-                        best_hash: Some(data.best_hash)
+                        best_hash: Some(data.best_hash),
                     };
 
                     self.peers.push(node);
 
-                    let mut neighbors = data.neighbors
+                    let mut neighbors = data
+                        .neighbors
                         .iter()
                         .map(|n| n.into())
                         .collect::<Vec<DistantNode>>();
                     self.known_nodes.append(&mut neighbors);
-                },
+                }
 
                 // Do not accept bogus
-                Ok(_) | Err(_) => drop(self.known_nodes.remove(i))
+                Ok(_) | Err(_) => drop(self.known_nodes.remove(i)),
             }
         }
 
@@ -234,13 +262,15 @@ impl Network {
     }
 
     pub fn has_peer<T: PartialEq>(&self, item: T) -> bool
-        where Node: PartialEq<T>
+    where
+        Node: PartialEq<T>,
     {
         self.peers.iter().any(|n| *n == item)
     }
 
     pub fn has_known<T: PartialEq>(&self, item: T) -> bool
-        where DistantNode: PartialEq<T>
+    where
+        DistantNode: PartialEq<T>,
     {
         self.known_nodes.iter().any(|n| *n == item)
     }
@@ -266,7 +296,12 @@ impl Network {
     }
 }
 
-pub fn listen_for_connections(listen_addr: SocketAddr, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_arc: &Arc<Mutex<State>>) -> Result<(), Box<dyn Error>> {
+pub fn listen_for_connections(
+    listen_addr: SocketAddr,
+    gui_req_channel: &Sender<GUIRequest>,
+    gui_res_channel: &Receiver<GUIResponse>,
+    state_arc: &Arc<Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let socket = TcpListener::bind(listen_addr)?;
 
     for stream in socket.incoming() {

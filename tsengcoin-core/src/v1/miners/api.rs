@@ -1,6 +1,9 @@
-use std::{sync::{mpsc::Receiver, Mutex}, collections::HashMap};
+use std::{
+    collections::HashMap,
+    sync::{mpsc::Receiver, Mutex},
+};
 
-use crate::{wallet::Hash256, v1::state::State};
+use crate::{v1::state::State, wallet::Hash256};
 
 pub type MineFunc = fn(&Mutex<State>, Receiver<MinerMessage>);
 
@@ -12,12 +15,16 @@ pub enum MinerMessage {
     ///     2. Whether the pending transaction pool has changed
     NewBlock(Hash256, bool),
     // The argument is the new difficulty target
-    NewDifficulty(Hash256)
+    NewDifficulty(Hash256),
 }
 
 /// Assumes that the miner name is a valid miner.
 #[allow(unused_variables)]
-pub fn start_miner(state_mut: &Mutex<State>, miner_receiver: Receiver<MinerMessage>, miner_name: &str) {
+pub fn start_miner(
+    state_mut: &Mutex<State>,
+    miner_receiver: Receiver<MinerMessage>,
+    miner_name: &str,
+) {
     let miner_map = make_miner_map();
     let mine_func = miner_map.get(miner_name).unwrap();
 

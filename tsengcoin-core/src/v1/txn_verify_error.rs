@@ -1,13 +1,16 @@
-use std::error::{Error as StdError, self};
-use std::fmt;
+use std::{
+    error::{self, Error as StdError},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::script_error::ScriptError;
-use crate::wallet::Hash256;
+use crate::{script_error::ScriptError, wallet::Hash256};
 
-use super::block::MAX_BLOCK_SIZE;
-use super::transaction::{MAX_TXN_AMOUNT, MIN_TXN_FEE};
+use super::{
+    block::MAX_BLOCK_SIZE,
+    transaction::{MAX_TXN_AMOUNT, MIN_TXN_FEE},
+};
 
 pub type TxnVerifyResult<T> = std::result::Result<T, TxnVerifyError>;
 
@@ -27,7 +30,7 @@ pub enum ErrorKind {
     LowFee(u64),
     DoubleSpend(Hash256, usize),
     InvalidHash,
-    ZeroOutput
+    ZeroOutput,
 }
 
 impl StdError for ErrorKind {
@@ -60,17 +63,52 @@ impl fmt::Display for ErrorKind {
         match &*self {
             ErrorKind::EmptyInputs => write!(fmt, "{}", self.description()),
             ErrorKind::EmptyOutputs => write!(fmt, "{}", self.description()),
-            ErrorKind::TooLarge => write!(fmt, "{}. Cannot exceed {} bytes", self.description(), MAX_BLOCK_SIZE),
-            ErrorKind::OutOfRange(val) => write!(fmt, "{}. Max is {} TsengCoin, received {}", self.description(), MAX_TXN_AMOUNT, val),
+            ErrorKind::TooLarge => write!(
+                fmt,
+                "{}. Cannot exceed {} bytes",
+                self.description(),
+                MAX_BLOCK_SIZE
+            ),
+            ErrorKind::OutOfRange(val) => write!(
+                fmt,
+                "{}. Max is {} TsengCoin, received {}",
+                self.description(),
+                MAX_TXN_AMOUNT,
+                val
+            ),
             ErrorKind::Coinbase => write!(fmt, "{}", self.description()),
             ErrorKind::InvalidUTXOIndex => write!(fmt, "{}", self.description()),
             ErrorKind::Script(err) => write!(fmt, "{}: {}", self.description(), err),
-            ErrorKind::BadUnlockScript(hash, output_idx) => write!(fmt, "{}: input transaction {}, output {}", self.description(), hex::encode(hash), output_idx),
-            ErrorKind::Overspend(input_amt, output_amt) => write!(fmt, "{}: tried to spend {} when only {} provided as input", self.description(), output_amt, input_amt),
-            ErrorKind::LowFee(fee) => write!(fmt, "{}: Tried to spend fee of {}, minimum fee is {}", self.description(), fee, MIN_TXN_FEE),
-            ErrorKind::DoubleSpend(hash, output_idx) => write!(fmt, "{}: hash: {}, output index: {}", self.description(), hex::encode(hash), output_idx),
+            ErrorKind::BadUnlockScript(hash, output_idx) => write!(
+                fmt,
+                "{}: input transaction {}, output {}",
+                self.description(),
+                hex::encode(hash),
+                output_idx
+            ),
+            ErrorKind::Overspend(input_amt, output_amt) => write!(
+                fmt,
+                "{}: tried to spend {} when only {} provided as input",
+                self.description(),
+                output_amt,
+                input_amt
+            ),
+            ErrorKind::LowFee(fee) => write!(
+                fmt,
+                "{}: Tried to spend fee of {}, minimum fee is {}",
+                self.description(),
+                fee,
+                MIN_TXN_FEE
+            ),
+            ErrorKind::DoubleSpend(hash, output_idx) => write!(
+                fmt,
+                "{}: hash: {}, output index: {}",
+                self.description(),
+                hex::encode(hash),
+                output_idx
+            ),
             ErrorKind::InvalidHash => write!(fmt, "{}", self.description()),
-            ErrorKind::ZeroOutput => write!(fmt, "{}", self.description())
+            ErrorKind::ZeroOutput => write!(fmt, "{}", self.description()),
         }
     }
 }

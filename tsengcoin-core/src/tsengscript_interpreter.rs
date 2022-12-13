@@ -1,17 +1,17 @@
-use std::fmt::Debug;
-use std::{collections::HashMap};
 use num_bigint::BigUint;
 use ring::signature;
+use std::{collections::HashMap, fmt::Debug};
 
-use crate::script_error::ScriptResult;
-use crate::script_error::ErrorKind::ScriptTooLong;
-use crate::script_error::ErrorKind::InvalidScriptToken;
-use crate::script_error::ErrorKind::ScriptStackUnderflow;
-use crate::script_error::ErrorKind::ScriptStackOverflow;
-use crate::script_error::ErrorKind::InvalidTokenType;
-use crate::script_error::ErrorKind::IntegerOverflow;
-use crate::script_error::ErrorKind::EqualVerifyFailed;
-use crate::wallet::address_from_public_key;
+use crate::{
+    script_error::{
+        ErrorKind::{
+            EqualVerifyFailed, IntegerOverflow, InvalidScriptToken, InvalidTokenType,
+            ScriptStackOverflow, ScriptStackUnderflow, ScriptTooLong,
+        },
+        ScriptResult,
+    },
+    wallet::address_from_public_key,
+};
 
 /// Scripts can be 1kb max to mitigate malicious transactions
 const MAX_SCRIPT_LEN: usize = 1024;
@@ -27,7 +27,7 @@ type OperatorFn = fn(stack: &mut Vec<Token>) -> ScriptResult<()>;
 pub enum Token {
     UByteSeq(BigUint),
     Bool(bool),
-    Operator(OperatorFn)
+    Operator(OperatorFn),
 }
 
 impl Debug for Token {
@@ -35,14 +35,14 @@ impl Debug for Token {
         match self {
             Self::UByteSeq(arg0) => f.debug_tuple("UByteSeq").field(arg0).finish(),
             Self::Bool(arg0) => f.debug_tuple("Bool").field(arg0).finish(),
-            Self::Operator(_) => write!(f, "Operator")
+            Self::Operator(_) => write!(f, "Operator"),
         }
     }
 }
 
 pub struct ExecutionResult {
     pub top: Option<Token>,
-    pub stack: Vec<Token>
+    pub stack: Vec<Token>,
 }
 
 fn make_operator_name_map() -> HashMap<String, OperatorFn> {
@@ -86,11 +86,10 @@ fn tokenize(raw_tokens: &Vec<String>) -> ScriptResult<Vec<Token>> {
             continue;
         }
 
-        let padded_token = 
-            &match raw_token.len() % 2 == 0{
-                true => raw_token.to_owned(),
-                false => format!("0{}", raw_token),
-            };
+        let padded_token = &match raw_token.len() % 2 == 0 {
+            true => raw_token.to_owned(),
+            false => format!("0{}", raw_token),
+        };
 
         // Pad and check if it is a hex string
         let hex_opt = hex::decode(padded_token);
@@ -120,7 +119,7 @@ pub fn execute(script: &String, stack_init: &Vec<Token>) -> ScriptResult<Executi
     for token in tokens {
         match token {
             Token::Operator(op) => op(&mut stack)?,
-            literal => stack.push(literal)
+            literal => stack.push(literal),
         };
 
         if stack.len() > MAX_STACK_SIZE {
@@ -129,12 +128,15 @@ pub fn execute(script: &String, stack_init: &Vec<Token>) -> ScriptResult<Executi
     }
 
     // Return the last item on the stack - this is the result of the script
-    Ok(ExecutionResult { top: stack.last().cloned(), stack })
+    Ok(ExecutionResult {
+        top: stack.last().cloned(),
+        stack,
+    })
 }
 
 fn op_add(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 2 {
-        return Err(Box::new(ScriptStackUnderflow))
+        return Err(Box::new(ScriptStackUnderflow));
     }
 
     let op1 = stack.pop().unwrap();
@@ -144,7 +146,7 @@ fn op_add(stack: &mut Vec<Token>) -> ScriptResult<()> {
         (Token::UByteSeq(bigint1), Token::UByteSeq(bigint2)) => {
             let result = bigint1 + bigint2;
             stack.push(Token::UByteSeq(result));
-        },
+        }
         (_, _) => return Err(Box::new(InvalidTokenType)),
     };
 
@@ -153,7 +155,7 @@ fn op_add(stack: &mut Vec<Token>) -> ScriptResult<()> {
 
 fn op_sub(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 2 {
-        return Err(Box::new(ScriptStackUnderflow))
+        return Err(Box::new(ScriptStackUnderflow));
     }
 
     let op1 = stack.pop().unwrap();
@@ -167,7 +169,7 @@ fn op_sub(stack: &mut Vec<Token>) -> ScriptResult<()> {
 
             let result = bigint1 - bigint2;
             stack.push(Token::UByteSeq(result));
-        },
+        }
         (_, _) => return Err(Box::new(InvalidTokenType)),
     };
 
@@ -176,7 +178,7 @@ fn op_sub(stack: &mut Vec<Token>) -> ScriptResult<()> {
 
 fn op_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 2 {
-        return Err(Box::new(ScriptStackUnderflow))
+        return Err(Box::new(ScriptStackUnderflow));
     }
 
     let op1 = stack.pop().unwrap();
@@ -185,10 +187,10 @@ fn op_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
     match (op1, op2) {
         (Token::UByteSeq(item1), Token::UByteSeq(item2)) => {
             stack.push(Token::Bool(item1 == item2));
-        },
+        }
         (Token::Bool(item1), Token::Bool(item2)) => {
             stack.push(Token::Bool(item1 == item2));
-        },
+        }
         (_, _) => return Err(Box::new(InvalidTokenType)),
     };
 
@@ -197,7 +199,7 @@ fn op_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
 
 fn op_require_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 2 {
-        return Err(Box::new(ScriptStackUnderflow))
+        return Err(Box::new(ScriptStackUnderflow));
     }
 
     let op1 = stack.pop().unwrap();
@@ -208,12 +210,12 @@ fn op_require_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
             if item1 != item2 {
                 return Err(Box::new(EqualVerifyFailed));
             }
-        },
+        }
         (Token::Bool(item1), Token::Bool(item2)) => {
             if item1 != item2 {
                 return Err(Box::new(EqualVerifyFailed));
             }
-        },
+        }
         (_, _) => return Err(Box::new(InvalidTokenType)),
     };
 
@@ -222,7 +224,7 @@ fn op_require_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
 
 fn op_dup(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.is_empty() {
-        return Err(Box::new(ScriptStackUnderflow))
+        return Err(Box::new(ScriptStackUnderflow));
     }
 
     let op1 = stack.pop().unwrap();
@@ -235,18 +237,18 @@ fn op_dup(stack: &mut Vec<Token>) -> ScriptResult<()> {
 
 fn op_hash160(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.is_empty() {
-        return Err(Box::new(ScriptStackUnderflow))
+        return Err(Box::new(ScriptStackUnderflow));
     }
 
     let op1 = stack.pop().unwrap();
-    
+
     match op1 {
         Token::UByteSeq(bigint) => {
             let bytes = bigint.to_bytes_be();
             let hash = address_from_public_key(&bytes);
 
             stack.push(Token::UByteSeq(BigUint::from_bytes_be(&hash)));
-        },
+        }
         _ => return Err(Box::new(InvalidTokenType)),
     };
 
@@ -255,7 +257,7 @@ fn op_hash160(stack: &mut Vec<Token>) -> ScriptResult<()> {
 
 fn op_checksig(stack: &mut Vec<Token>) -> ScriptResult<()> {
     if stack.len() < 3 {
-        return Err(Box::new(ScriptStackUnderflow))
+        return Err(Box::new(ScriptStackUnderflow));
     }
 
     let pkey_token = stack.pop().unwrap();
@@ -265,12 +267,17 @@ fn op_checksig(stack: &mut Vec<Token>) -> ScriptResult<()> {
     match (pkey_token, sig_token, data_token) {
         (Token::UByteSeq(pkey), Token::UByteSeq(sig), Token::UByteSeq(data)) => {
             let public_key_bytes = pkey.to_bytes_be();
-            let public_key = signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_ASN1, &public_key_bytes);
-            let is_valid = public_key.verify(&data.to_bytes_be(), &sig.to_bytes_be()).is_ok();
+            let public_key = signature::UnparsedPublicKey::new(
+                &signature::ECDSA_P256_SHA256_ASN1,
+                &public_key_bytes,
+            );
+            let is_valid = public_key
+                .verify(&data.to_bytes_be(), &sig.to_bytes_be())
+                .is_ok();
 
             stack.push(Token::Bool(is_valid));
-        },
-        (_, _, _) => return Err(Box::new(InvalidTokenType))
+        }
+        (_, _, _) => return Err(Box::new(InvalidTokenType)),
     };
 
     Ok(())

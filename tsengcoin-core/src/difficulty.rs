@@ -1,6 +1,6 @@
 use num_bigint::BigUint;
 
-use crate::{wallet::Hash256, v1::block::Block};
+use crate::{v1::block::Block, wallet::Hash256};
 
 type Second = u64;
 

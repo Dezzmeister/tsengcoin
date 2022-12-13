@@ -1,8 +1,19 @@
-use std::{sync::Mutex, collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error, sync::Mutex};
 
-use crate::{v1::{state::State, block::{RawBlockHeader, make_merkle_root_from_hashes}}, command::{CommandMap, CommandInvocation, Command, FieldType, Field}, hash::hash_sha256, wallet::Hash256};
+use crate::{
+    command::{Command, CommandInvocation, CommandMap, Field, FieldType},
+    hash::hash_sha256,
+    v1::{
+        block::{make_merkle_root_from_hashes, RawBlockHeader},
+        state::State,
+    },
+    wallet::Hash256,
+};
 
-fn get_utxos(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn get_utxos(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
@@ -11,7 +22,10 @@ fn get_utxos(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> R
     Ok(())
 }
 
-fn hash_test(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn hash_test(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
     let genesis = &state.blockchain.blocks[0];
@@ -25,7 +39,10 @@ fn hash_test(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> R
     Ok(())
 }
 
-fn merkle_test(invocation: &CommandInvocation, _state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn merkle_test(
+    invocation: &CommandInvocation,
+    _state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let raw_hashes_str = invocation.get_field("hashes").unwrap();
     let raw_hashes = raw_hashes_str.split(' ');
     let mut hashes: Vec<Hash256> = vec![];
@@ -33,7 +50,7 @@ fn merkle_test(invocation: &CommandInvocation, _state: Option<&Mutex<State>>) ->
     for raw_hash in raw_hashes {
         let bytes = hex::decode(&raw_hash).unwrap();
         let mut hash = [0_u8; 32];
-        
+
         hash.copy_from_slice(&bytes);
         hashes.push(hash);
     }
@@ -44,7 +61,10 @@ fn merkle_test(invocation: &CommandInvocation, _state: Option<&Mutex<State>>) ->
     Ok(())
 }
 
-fn print_blockchain(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn print_blockchain(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
@@ -67,27 +87,25 @@ pub fn make_command_map<'a>() -> CommandMap<&'a Mutex<State>> {
         expected_fields: vec![],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Hash test")
+        desc: String::from("Hash test"),
     };
     let merkle_test_cmd: Command<&Mutex<State>> = Command {
         processor: merkle_test,
-        expected_fields: vec![
-            Field::new(
-                "hashes",
-                FieldType::Spaces(0),
-                "The hashes to include in the merkle root"
-            )
-        ],
+        expected_fields: vec![Field::new(
+            "hashes",
+            FieldType::Spaces(0),
+            "The hashes to include in the merkle root",
+        )],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Make a Merkle root from the given hashes")
+        desc: String::from("Make a Merkle root from the given hashes"),
     };
     let print_blockchain_cmd: Command<&Mutex<State>> = Command {
         processor: print_blockchain,
         expected_fields: vec![],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Print the blockchain structure")
+        desc: String::from("Print the blockchain structure"),
     };
 
     map.insert(String::from("get-utxos"), get_utxos_cmd);

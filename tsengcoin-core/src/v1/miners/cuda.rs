@@ -1,9 +1,26 @@
-use std::{sync::{Mutex, mpsc::{Receiver, TryRecvError}}};
-use chrono::{Utc, Duration, DateTime};
+use chrono::{DateTime, Duration, Utc};
 use cust::prelude::*;
 use lazy_static::lazy_static;
+use std::sync::{
+    mpsc::{Receiver, TryRecvError},
+    Mutex,
+};
 
-use crate::{v1::{state::State, transaction::{Transaction, compute_fee, make_coinbase_txn, coinbase_size_estimate}, block::{MAX_TRANSACTION_FIELD_SIZE, RawBlockHeader, make_merkle_root, Block, RawBlock, BlockHeader}, VERSION, block_verify::verify_block, request::Request}, wallet::Hash256, hash::{hash_chunks}};
+use crate::{
+    hash::hash_chunks,
+    v1::{
+        block::{
+            make_merkle_root, Block, BlockHeader, RawBlock, RawBlockHeader,
+            MAX_TRANSACTION_FIELD_SIZE,
+        },
+        block_verify::verify_block,
+        request::Request,
+        state::State,
+        transaction::{coinbase_size_estimate, compute_fee, make_coinbase_txn, Transaction},
+        VERSION,
+    },
+    wallet::Hash256,
+};
 
 use super::api::MinerMessage;
 
@@ -12,7 +29,7 @@ static MINER_PTX: &str = include_str!("../../../kernels/miner.ptx");
 /// Update the hashes per sec metric every 5 seconds
 const HASH_PER_SEC_INTERVAL: i64 = 5;
 
-lazy_static!{
+lazy_static! {
     /// Poll the MinerMessage receiver every 5 seconds
     static ref POLL_INTERVAL: Duration = Duration::seconds(5);
 }
@@ -25,15 +42,30 @@ struct CUDAContext {
 }
 
 pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
-    let CUDAContext { _context, _device, module, stream } = setup_cuda();
-    let kernel = module.get_function("finish_hash").expect("Failed to load mining function");
-    let (grid_size, block_size) = kernel.suggested_launch_configuration(0, 0.into()).expect("Unable to determine launch config");
+    let CUDAContext {
+        _context,
+        _device,
+        module,
+        stream,
+    } = setup_cuda();
+    let kernel = module
+        .get_function("finish_hash")
+        .expect("Failed to load mining function");
+    let (grid_size, block_size) = kernel
+        .suggested_launch_configuration(0, 0.into())
+        .expect("Unable to determine launch config");
     let num_nonces: usize = (grid_size * block_size).try_into().unwrap();
 
-    println!("Running CUDA miner kernel with grid size {}, block size {}, and {} nonces per round", grid_size, block_size, num_nonces);
+    println!(
+        "Running CUDA miner kernel with grid size {}, block size {}, and {} nonces per round",
+        grid_size, block_size, num_nonces
+    );
     let mut raw_block = make_raw_block(state_mut);
 
-    println!("Difficulty target is {}", hex::encode(raw_block.header.difficulty_target));
+    println!(
+        "Difficulty target is {}",
+        hex::encode(raw_block.header.difficulty_target)
+    );
 
     let mut raw_header_bytes = bincode::serialize(&raw_block.header).unwrap();
     let (mut schedule, mut hash_vars) = hash_chunks(&raw_header_bytes, 1);
@@ -42,8 +74,10 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
     let mut hashes = vec![0_u8; num_nonces * 32];
 
     let mut nonces_gpu = DeviceBuffer::from_slice(&nonces).expect("Failed to create device memory");
-    let mut prev_gpu = DeviceBuffer::from_slice(&schedule[0..11]).expect("Failed to create device memory");
-    let mut hash_vars_gpu = DeviceBuffer::from_slice(&hash_vars).expect("Failed to create device memory");
+    let mut prev_gpu =
+        DeviceBuffer::from_slice(&schedule[0..11]).expect("Failed to create device memory");
+    let mut hash_vars_gpu =
+        DeviceBuffer::from_slice(&hash_vars).expect("Failed to create device memory");
     let hashes_gpu = DeviceBuffer::from_slice(&hashes).expect("Failed to create device memory");
 
     let mut now: DateTime<Utc>;
@@ -64,13 +98,14 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                 Err(TryRecvError::Disconnected) => {
                     println!("Stopping miner thread due to unexpected channel closing");
                     return;
-                },
-                Ok(MinerMessage::NewBlock(_, _)) |
-                Ok(MinerMessage::NewTransactions(_)) if raw_block.transactions.len() == 1 => {
+                }
+                Ok(MinerMessage::NewBlock(_, _)) | Ok(MinerMessage::NewTransactions(_))
+                    if raw_block.transactions.len() == 1 =>
+                {
                     // Force a reset by moving the reset time into the past
                     reset_time = Utc::now() - Duration::hours(1);
                     println!("Miner received instruction to reset");
-                },
+                }
                 Ok(MinerMessage::NewDifficulty(diff)) => {
                     reset_time = Utc::now() - Duration::hours(1);
                     println!("New difficulty target: {}", hex::encode(diff));
@@ -90,14 +125,20 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
             schedule = temp.0;
             hash_vars = temp.1;
 
-            prev_gpu.copy_from(&schedule[0..11]).expect("Failed to copy from host to device memory");
-            hash_vars_gpu.copy_from(&hash_vars).expect("Failed to copy from host to device memory");
+            prev_gpu
+                .copy_from(&schedule[0..11])
+                .expect("Failed to copy from host to device memory");
+            hash_vars_gpu
+                .copy_from(&hash_vars)
+                .expect("Failed to copy from host to device memory");
 
             reset_time = now + Duration::minutes(30);
         }
 
         randomize(&mut nonces);
-        nonces_gpu.copy_from(&nonces).expect("Failed to copy memory from host to device");
+        nonces_gpu
+            .copy_from(&nonces)
+            .expect("Failed to copy memory from host to device");
 
         unsafe {
             launch!(
@@ -108,16 +149,22 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                     hash_vars_gpu.as_device_ptr(),
                     hashes_gpu.as_device_ptr()
                 )
-            ).expect("Failed to launch mining kernel");
+            )
+            .expect("Failed to launch mining kernel");
         }
 
-        stream.synchronize().expect("Failed to synchronize device stream");
-        hashes_gpu.copy_to(&mut hashes).expect("Failed to copy memory from device to host");
+        stream
+            .synchronize()
+            .expect("Failed to synchronize device stream");
+        hashes_gpu
+            .copy_to(&mut hashes)
+            .expect("Failed to copy memory from device to host");
 
         total_hashes += num_nonces;
 
         if now - print_time > Duration::seconds(HASH_PER_SEC_INTERVAL) {
-            state_mut.lock().unwrap().hashes_per_second = total_hashes / (HASH_PER_SEC_INTERVAL as usize);
+            state_mut.lock().unwrap().hashes_per_second =
+                total_hashes / (HASH_PER_SEC_INTERVAL as usize);
             print_time = now;
             total_hashes = 0;
         }
@@ -145,10 +192,10 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                     Ok(true) => {
                         // Why would this even happen? Who would mine a block with no parent?
                         println!("New block is an orphan. Rejecting");
-                    },
+                    }
                     Err(err) => {
                         println!("Rejecting new block: {}", err);
-                    },
+                    }
                     Ok(false) => {
                         state.network.broadcast_msg(&Request::NewBlock(new_block));
                     }
@@ -206,24 +253,28 @@ fn make_raw_block(state_mut: &Mutex<State>) -> RawBlock {
 
     RawBlock {
         header,
-        transactions: block_txns
+        transactions: block_txns,
     }
 }
 
 /// The problem here is to pick which transactions we will include in a block. Generally we want to maximize
-/// the total fees while staying under the block size limit. This is the knapsack problem, and it is NP hard - 
+/// the total fees while staying under the block size limit. This is the knapsack problem, and it is NP hard -
 /// so rather than deal with it here we just take as many transactions as we can fit regardless of fee. We could take
 /// a greedy approach to this problem and take the transactions with the highest fees, but then we would have to ensure that
 /// we don't leave any dependency transactions behind. We chose not to deal with this because the network is small
 /// and there won't be enough transactions to even approach the block size limit.
-fn pick_best_transactions(txns: &[Transaction], state: &State, coinbase_size: usize) -> (Vec<Transaction>, u64) {
+fn pick_best_transactions(
+    txns: &[Transaction],
+    state: &State,
+    coinbase_size: usize,
+) -> (Vec<Transaction>, u64) {
     let mut out: Vec<Transaction> = vec![];
     let mut size: usize = coinbase_size;
     let mut fees: u64 = 0;
 
     for txn in txns {
         let txn_size = txn.size();
-        
+
         if (txn_size + size) > MAX_TRANSACTION_FIELD_SIZE {
             continue;
         }
@@ -241,10 +292,14 @@ fn setup_cuda() -> CUDAContext {
     let ctx = cust::quick_init().expect("Failed to create CUDA context");
     // Just pick the first device for now because none of us have more than one CUDA GPU
     let device = Device::get_device(0).expect("Failed to get CUDA device");
-    println!("Using CUDA device: {}", device.name().expect("Failed to get device name"));
-    
+    println!(
+        "Using CUDA device: {}",
+        device.name().expect("Failed to get device name")
+    );
+
     let module = Module::from_ptx(MINER_PTX, &[]).expect("Failed to load mining code");
-    let stream = Stream::new(StreamFlags::NON_BLOCKING, None).expect("Failed to initialize stream to submit work to CUDA device");
+    let stream = Stream::new(StreamFlags::NON_BLOCKING, None)
+        .expect("Failed to initialize stream to submit work to CUDA device");
 
     CUDAContext {
         _context: ctx,

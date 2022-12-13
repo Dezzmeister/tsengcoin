@@ -1,12 +1,36 @@
-use std::{net::{TcpStream, SocketAddr}, error::Error, sync::{mpsc::{Receiver, Sender}, Arc}};
-use std::sync::Mutex;
+use std::{
+    error::Error,
+    net::{SocketAddr, TcpStream},
+    sync::{
+        mpsc::{Receiver, Sender},
+        Arc, Mutex,
+    },
+};
 
 use chrono::Utc;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::{wallet::{Hash256}, v1::{chain_request::{make_dh_response_req, check_pending_dh, make_intent_req}, request::send_new_txn, transaction::get_p2pkh_sender}, gui::gui::{GUIRequest, GUIResponse, is_connection_accepted}};
+use crate::{
+    gui::gui::{is_connection_accepted, GUIRequest, GUIResponse},
+    v1::{
+        chain_request::{check_pending_dh, make_dh_response_req, make_intent_req},
+        request::send_new_txn,
+        transaction::get_p2pkh_sender,
+    },
+    wallet::Hash256,
+};
 
-use super::{request::{Request, GetAddrReq, AdvertiseReq, GetBlocksReq}, state::{State}, net::{PROTOCOL_VERSION, Node, DistantNode}, block::{Block}, transaction::Transaction, txn_verify::verify_transaction, block_verify::verify_block, chain_request::{decompose_dh_req, is_dh_req_to_me, is_dh_req}, encrypted_msg::{is_enc_req, is_enc_req_to_me, decompose_enc_req, handle_chain_request}};
+use super::{
+    block::Block,
+    block_verify::verify_block,
+    chain_request::{decompose_dh_req, is_dh_req, is_dh_req_to_me},
+    encrypted_msg::{decompose_enc_req, handle_chain_request, is_enc_req, is_enc_req_to_me},
+    net::{DistantNode, Node, PROTOCOL_VERSION},
+    request::{AdvertiseReq, GetAddrReq, GetBlocksReq, Request},
+    state::State,
+    transaction::Transaction,
+    txn_verify::verify_transaction,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
@@ -29,20 +53,32 @@ pub enum GetBlocksRes {
     DisconnectedChains,
     BadChainIndex,
     BadHashes,
-    Blocks(Vec<Block>)
+    Blocks(Vec<Block>),
 }
 
-pub fn handle_request(req: Request, socket: &TcpStream, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_arc: &Arc<Mutex<State>>) -> Result<(), Box<dyn Error>> {
+pub fn handle_request(
+    req: Request,
+    socket: &TcpStream,
+    gui_req_channel: &Sender<GUIRequest>,
+    gui_res_channel: &Receiver<GUIResponse>,
+    state_arc: &Arc<Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     match req {
         Request::GetAddr(data) => handle_get_addr(data, socket, state_arc),
         Request::Advertise(data) => handle_advertise(data, socket, state_arc),
         Request::GetBlocks(data) => handle_get_blocks(data, socket, state_arc),
-        Request::NewTxn(data) => handle_new_txn(data, socket, gui_req_channel, gui_res_channel, state_arc),
-        Request::NewBlock(data) => handle_new_block(data, socket, state_arc)
+        Request::NewTxn(data) => {
+            handle_new_txn(data, socket, gui_req_channel, gui_res_channel, state_arc)
+        }
+        Request::NewBlock(data) => handle_new_block(data, socket, state_arc),
     }
 }
 
-fn handle_get_addr(data: GetAddrReq, socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+fn handle_get_addr(
+    data: GetAddrReq,
+    socket: &TcpStream,
+    state_mut: &Mutex<State>,
+) -> Result<(), Box<dyn Error>> {
     let peer_remote_addr = socket.peer_addr().unwrap().ip();
     let peer_remote_port = data.listen_port;
     let addr_you = SocketAddr::new(peer_remote_addr, peer_remote_port);
@@ -52,14 +88,14 @@ fn handle_get_addr(data: GetAddrReq, socket: &TcpStream, state_mut: &Mutex<State
 
     let neighbors: Vec<Node> = state.network.peers.iter().map(|p| p.to_owned()).collect();
 
-    let (best_height, chain_idx, _)  = state.blockchain.best_chain();
+    let (best_height, chain_idx, _) = state.blockchain.best_chain();
 
     let res = Response::GetAddr(GetAddrRes {
         version: PROTOCOL_VERSION,
         addr_you,
         neighbors,
         best_height,
-        best_hash: state.blockchain.top_hash(chain_idx)
+        best_hash: state.blockchain.top_hash(chain_idx),
     });
 
     let node = Node {
@@ -67,7 +103,7 @@ fn handle_get_addr(data: GetAddrReq, socket: &TcpStream, state_mut: &Mutex<State
         addr: addr_you,
         last_send: Utc::now(),
         best_height: Some(data.best_height),
-        best_hash: Some(data.best_hash)
+        best_hash: Some(data.best_hash),
     };
 
     // Add the node back as a peer
@@ -88,7 +124,11 @@ fn handle_get_addr(data: GetAddrReq, socket: &TcpStream, state_mut: &Mutex<State
     Ok(())
 }
 
-fn handle_advertise(data: AdvertiseReq, _socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+fn handle_advertise(
+    data: AdvertiseReq,
+    _socket: &TcpStream,
+    state_mut: &Mutex<State>,
+) -> Result<(), Box<dyn Error>> {
     let addr_you = data.addr_me;
 
     let mut guard = state_mut.lock().unwrap();
@@ -100,25 +140,36 @@ fn handle_advertise(data: AdvertiseReq, _socket: &TcpStream, state_mut: &Mutex<S
         return Ok(());
     }
 
-    state.network.known_nodes.push(DistantNode {
-        addr: addr_you
-    });
+    state
+        .network
+        .known_nodes
+        .push(DistantNode { addr: addr_you });
 
-    state.network.broadcast_msg(&Request::Advertise(AdvertiseReq {
-        addr_me: data.addr_me
-    }));
+    state
+        .network
+        .broadcast_msg(&Request::Advertise(AdvertiseReq {
+            addr_me: data.addr_me,
+        }));
 
-    
     if rand::random::<u8>() % 2 == 0 {
         let (best_height, chain_idx, _) = state.blockchain.best_chain();
 
-        state.network.find_new_friends(state.port(), state.remote_addr_me.unwrap(), best_height, state.blockchain.top_hash(chain_idx));
+        state.network.find_new_friends(
+            state.port(),
+            state.remote_addr_me.unwrap(),
+            best_height,
+            state.blockchain.top_hash(chain_idx),
+        );
     }
 
     Ok(())
 }
 
-fn handle_get_blocks(data: GetBlocksReq, socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+fn handle_get_blocks(
+    data: GetBlocksReq,
+    socket: &TcpStream,
+    state_mut: &Mutex<State>,
+) -> Result<(), Box<dyn Error>> {
     let mut guard = state_mut.lock().unwrap();
     let state = &mut *guard;
 
@@ -129,8 +180,8 @@ fn handle_get_blocks(data: GetBlocksReq, socket: &TcpStream, state_mut: &Mutex<S
             send_res(res, socket)?;
 
             return Ok(());
-        },
-        Some((_, chain_idx, pos)) => (chain_idx, pos)
+        }
+        Some((_, chain_idx, pos)) => (chain_idx, pos),
     };
 
     let your_hash_idx_opt = state.blockchain.get_block(data.your_hash);
@@ -140,12 +191,15 @@ fn handle_get_blocks(data: GetBlocksReq, socket: &TcpStream, state_mut: &Mutex<S
             send_res(res, socket)?;
 
             return Ok(());
-        },
-        Some((_, chain_idx, pos)) => (chain_idx, pos)
+        }
+        Some((_, chain_idx, pos)) => (chain_idx, pos),
     };
 
     if my_hash_chain != your_hash_chain && my_hash_chain != 0 {
-        send_res(Response::GetBlocks(GetBlocksRes::DisconnectedChains), socket)?;
+        send_res(
+            Response::GetBlocks(GetBlocksRes::DisconnectedChains),
+            socket,
+        )?;
 
         return Ok(());
     }
@@ -156,20 +210,28 @@ fn handle_get_blocks(data: GetBlocksReq, socket: &TcpStream, state_mut: &Mutex<S
         return Ok(());
     }
 
-    if your_hash_pos <= my_hash_pos  {
+    if your_hash_pos <= my_hash_pos {
         send_res(Response::GetBlocks(GetBlocksRes::BadHashes), socket)?;
 
         return Ok(());
     }
 
-    let blocks = state.blockchain.get_blocks(my_hash_chain, my_hash_pos + 1, your_hash_pos + 1);
+    let blocks = state
+        .blockchain
+        .get_blocks(my_hash_chain, my_hash_pos + 1, your_hash_pos + 1);
 
     send_res(Response::GetBlocks(GetBlocksRes::Blocks(blocks)), socket)?;
 
     Ok(())
 }
 
-pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &Sender<GUIRequest>, gui_res_channel: &Receiver<GUIResponse>, state_arc: &Arc<Mutex<State>>) -> Result<(), Box<dyn Error>> {
+pub fn handle_new_txn(
+    data: Transaction,
+    _socket: &TcpStream,
+    gui_req_channel: &Sender<GUIRequest>,
+    gui_res_channel: &Receiver<GUIResponse>,
+    state_arc: &Arc<Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let mut guard = state_arc.lock().unwrap();
     let state = &mut *guard;
 
@@ -184,8 +246,8 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
     let is_orphan = match verify_result {
         Err(_) => {
             return Ok(());
-        },
-        Ok(is_orphan) => is_orphan
+        }
+        Ok(is_orphan) => is_orphan,
     };
 
     match is_orphan {
@@ -205,7 +267,7 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
             Err(err) => {
                 println!("Error decrypting chain request to us: {}", err);
                 return Ok(());
-            },
+            }
         };
 
         handle_chain_request(chain_req, sender, state, state_arc)?;
@@ -229,13 +291,12 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
         if !should_respond_dh {
             // We now need to make a transaction with an encrypted request
             println!("Completed Diffie-Hellman key exchange with {}", sender_name);
-            
+
             match make_intent_req(sender, state)? {
                 Some(intent_req) => {
                     send_new_txn(intent_req, state)?;
                     println!("Sending encrypted request");
-
-                },
+                }
                 None => {
                     println!("You can now send chain requests to {}", sender_name);
                 }
@@ -250,17 +311,25 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
         // up the rest of the program
         drop(guard);
 
-        let accept_request = is_connection_accepted(sender_name.clone(), gui_req_channel, gui_res_channel, has_gui)?;
+        let accept_request = is_connection_accepted(
+            sender_name.clone(),
+            gui_req_channel,
+            gui_res_channel,
+            has_gui,
+        )?;
 
         if !accept_request {
             println!("Rejected connection request by {}", sender_name);
             return Ok(());
         }
 
-        println!("Accepted connection request from {}. Finishing Diffie-Hellman exchange", sender_name);
+        println!(
+            "Accepted connection request from {}. Finishing Diffie-Hellman exchange",
+            sender_name
+        );
 
         let mut guard = state_arc.lock().unwrap();
-        let state = &mut *guard;   
+        let state = &mut *guard;
         let (response_req, _) = make_dh_response_req(&data, state)?;
         send_new_txn(response_req, state)?;
     }
@@ -268,7 +337,11 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
     Ok(())
 }
 
-pub fn handle_new_block(data: Block, _socket: &TcpStream, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+pub fn handle_new_block(
+    data: Block,
+    _socket: &TcpStream,
+    state_mut: &Mutex<State>,
+) -> Result<(), Box<dyn Error>> {
     let mut guard = state_mut.lock().unwrap();
     let state = &mut *guard;
 
@@ -285,11 +358,11 @@ pub fn handle_new_block(data: Block, _socket: &TcpStream, state_mut: &Mutex<Stat
         Err(err) => {
             println!("Error verifying block: {}", err);
             return Ok(());
-        },
+        }
         Ok(true) => {
             println!("Received new orphan block: {}", hex::encode(&block_hash));
-            return Ok(())
-        },
+            return Ok(());
+        }
         Ok(false) => {
             println!("Received new block: {}", hex::encode(&block_hash));
         }

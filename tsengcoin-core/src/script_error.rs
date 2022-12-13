@@ -1,5 +1,7 @@
-use std::error::{Error as StdError, self};
-use std::fmt;
+use std::{
+    error::{self, Error as StdError},
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +17,7 @@ pub enum ErrorKind {
     ScriptStackUnderflow,
     InvalidTokenType,
     IntegerOverflow,
-    EqualVerifyFailed
+    EqualVerifyFailed,
 }
 
 impl StdError for ErrorKind {
@@ -25,9 +27,11 @@ impl StdError for ErrorKind {
             ErrorKind::InvalidScriptToken(_) => "Bad token in transaction script",
             ErrorKind::ScriptStackUnderflow => "Stack underflow",
             ErrorKind::ScriptStackOverflow => "Stack overflow",
-            ErrorKind::InvalidTokenType => "Tried to perform an operation with a token of the wrong type",
+            ErrorKind::InvalidTokenType => {
+                "Tried to perform an operation with a token of the wrong type"
+            }
             ErrorKind::IntegerOverflow => "Integer overflow",
-            ErrorKind::EqualVerifyFailed => "Expected two tokens to be equal"
+            ErrorKind::EqualVerifyFailed => "Expected two tokens to be equal",
         }
     }
 
@@ -40,8 +44,16 @@ impl fmt::Display for ErrorKind {
     #[allow(deprecated)]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
-            ErrorKind::ScriptTooLong(max_len, actual_len) => write!(fmt, "{}: Max length: {}B, actual length: {}B", self.description(), max_len, actual_len),
-            ErrorKind::InvalidScriptToken(token) => write!(fmt, "{}: token: {}", self.description(), token),
+            ErrorKind::ScriptTooLong(max_len, actual_len) => write!(
+                fmt,
+                "{}: Max length: {}B, actual length: {}B",
+                self.description(),
+                max_len,
+                actual_len
+            ),
+            ErrorKind::InvalidScriptToken(token) => {
+                write!(fmt, "{}: token: {}", self.description(), token)
+            }
             ErrorKind::ScriptStackUnderflow => write!(fmt, "{}", self.description()),
             ErrorKind::ScriptStackOverflow => write!(fmt, "{}", self.description()),
             ErrorKind::InvalidTokenType => write!(fmt, "{}", self.description()),

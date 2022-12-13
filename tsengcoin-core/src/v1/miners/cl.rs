@@ -1,11 +1,28 @@
-use std::{sync::{Mutex, mpsc::Receiver}, ptr};
+use std::{
+    ptr,
+    sync::{mpsc::Receiver, Mutex},
+};
 
-use opencl3::{device::{Device, get_all_devices, CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_CPU}, error_codes::ClError, context::Context, command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE}, program::Program, kernel::{Kernel, ExecuteKernel}, types::{cl_uint, cl_uchar, CL_NON_BLOCKING, cl_event}, memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_WRITE_ONLY}};
+use opencl3::{
+    command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE},
+    context::Context,
+    device::{get_all_devices, Device, CL_DEVICE_TYPE_CPU, CL_DEVICE_TYPE_GPU},
+    error_codes::ClError,
+    kernel::{ExecuteKernel, Kernel},
+    memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_WRITE_ONLY},
+    program::Program,
+    types::{cl_event, cl_uchar, cl_uint, CL_NON_BLOCKING},
+};
 
-use crate::{v1::{state::State, block::{genesis_block, RawBlockHeader}}, hash::{hash_chunks, hash_sha256}};
+use crate::{
+    hash::{hash_chunks, hash_sha256},
+    v1::{
+        block::{genesis_block, RawBlockHeader},
+        state::State,
+    },
+};
 
 use super::api::MinerMessage;
-
 
 static MINER_CL_CODE: &str = include_str!("../../../kernels/cl_miner.cl");
 
@@ -16,12 +33,12 @@ pub fn mine(_state_mut: &Mutex<State>, _receiver: Receiver<MinerMessage>) {
         Err(err) => {
             println!("Error picking OpenCL device: {}", err);
             return;
-        },
+        }
         Ok(None) => {
             println!("No OpenCL devices available");
             return;
-        },
-        Ok(Some(device)) => device
+        }
+        Ok(Some(device)) => device,
     };
     let max_compute_units = device.max_compute_units().unwrap();
     println!("max compute units: {}", max_compute_units);
@@ -66,17 +83,20 @@ pub fn mine(_state_mut: &Mutex<State>, _receiver: Receiver<MinerMessage>) {
     };
 
     let nonces_write_event = unsafe {
-        queue.enqueue_write_buffer(&mut nonces_buf, CL_NON_BLOCKING, 0, &nonces, &[])
+        queue
+            .enqueue_write_buffer(&mut nonces_buf, CL_NON_BLOCKING, 0, &nonces, &[])
             .expect("Failed to write to nonce buffer")
     };
 
     let schedule_write_event = unsafe {
-        queue.enqueue_write_buffer(&mut schedule_buf, CL_NON_BLOCKING, 0, &schedule_part, &[])
+        queue
+            .enqueue_write_buffer(&mut schedule_buf, CL_NON_BLOCKING, 0, &schedule_part, &[])
             .expect("Failed to write to schedule buffer")
     };
 
     let hash_vars_write_event = unsafe {
-        queue.enqueue_write_buffer(&mut hash_vars_buf, CL_NON_BLOCKING, 0, &hash_vars, &[])
+        queue
+            .enqueue_write_buffer(&mut hash_vars_buf, CL_NON_BLOCKING, 0, &hash_vars, &[])
             .expect("Failed to write to hash vars buffer")
     };
 
@@ -96,9 +116,10 @@ pub fn mine(_state_mut: &Mutex<State>, _receiver: Receiver<MinerMessage>) {
     };
 
     let events: Vec<cl_event> = vec![kernel_event.get()];
-    
+
     let read_event = unsafe {
-        queue.enqueue_read_buffer(&hashes_buf, CL_NON_BLOCKING, 0, &mut hashes, &events)
+        queue
+            .enqueue_read_buffer(&hashes_buf, CL_NON_BLOCKING, 0, &mut hashes, &events)
             .expect("Failed to read hashes from device")
     };
 
@@ -118,7 +139,7 @@ fn pick_best_device() -> Result<Option<Device>, ClError> {
 
     let device_id = match devices.first() {
         Some(id) => *id,
-        None => return Ok(None)
+        None => return Ok(None),
     };
 
     let device = Device::new(device_id);

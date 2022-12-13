@@ -1,6 +1,6 @@
 use bincode::Error;
 
-use crate::{wallet::Hash256, v1::block::RawBlockHeader};
+use crate::{v1::block::RawBlockHeader, wallet::Hash256};
 
 const BYTES_PER_BLOCK: usize = 512 / 8;
 const INPUT_PAD: u8 = 0b1000_0000;
@@ -21,12 +21,21 @@ struct HKState {
 
 struct HKTempState {
     temp1: u32,
-    temp2: u32
+    temp2: u32,
 }
 
 impl Default for HKState {
     fn default() -> Self {
-        HKState { a: H[0], b: H[1], c: H[2], d: H[3], e: H[4], f: H[5], g: H[6], h: H[7] }
+        HKState {
+            a: H[0],
+            b: H[1],
+            c: H[2],
+            d: H[3],
+            e: H[4],
+            f: H[5],
+            g: H[6],
+            h: H[7],
+        }
     }
 }
 
@@ -38,7 +47,7 @@ const H: [u32; 8] = [
     0b01010001000011100101001001111111,
     0b10011011000001010110100010001100,
     0b00011111100000111101100110101011,
-    0b01011011111000001100110100011001
+    0b01011011111000001100110100011001,
 ];
 
 const K: [u32; 64] = [
@@ -109,22 +118,53 @@ const K: [u32; 64] = [
 ];
 
 fn make_temp_state(schedule: &MessageSchedule, idx: usize, state: HKState) -> HKTempState {
-    let HKState { a, b, c, e, f, g, h, .. } = state;
+    let HKState {
+        a,
+        b,
+        c,
+        e,
+        f,
+        g,
+        h,
+        ..
+    } = state;
     let majority = (a & b) ^ (a & c) ^ (b & c);
     let e0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
     let choice = (e & f) ^ ((!e) & g);
     let e1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
     let temp2 = e0.wrapping_add(majority);
-    let temp1 = h.wrapping_add(e1).wrapping_add(choice).wrapping_add(K[idx]).wrapping_add(schedule[idx]);
+    let temp1 = h
+        .wrapping_add(e1)
+        .wrapping_add(choice)
+        .wrapping_add(K[idx])
+        .wrapping_add(schedule[idx]);
 
     HKTempState { temp1, temp2 }
 }
 
 fn make_next_state(schedule: &MessageSchedule, idx: usize, state: HKState) -> HKState {
-    let HKState { a, b, c, d, e, f, g, .. } = state;
+    let HKState {
+        a,
+        b,
+        c,
+        d,
+        e,
+        f,
+        g,
+        ..
+    } = state;
     let HKTempState { temp1, temp2, .. } = make_temp_state(schedule, idx, state);
 
-    HKState{a: temp1.wrapping_add(temp2), b: a, c: b, d: c, e: d.wrapping_add(temp1), f: e, g: f, h: g}
+    HKState {
+        a: temp1.wrapping_add(temp2),
+        b: a,
+        c: b,
+        d: c,
+        e: d.wrapping_add(temp1),
+        f: e,
+        g: f,
+        h: g,
+    }
 }
 
 fn split(a: u64) -> [u8; 8] {
@@ -149,7 +189,7 @@ fn make_message_block(input: &[u8]) -> (Vec<u8>, usize) {
     v[0..input.len()].copy_from_slice(input);
     v[input.len()] = INPUT_PAD;
     v[(block_length - 8)..block_length].copy_from_slice(&bit_length);
-    
+
     (v, num_chunks)
 }
 
@@ -201,7 +241,7 @@ pub fn hash_chunks(input: &[u8], last_chunk: usize) -> ([u32; 16], [u32; 8]) {
         state.h = hash[7];
 
         copy_chunk_to_schedule(block.as_slice(), i, &mut schedule);
-        
+
         for j in 0..48 {
             schedule[j + 16] = calc_schedule_entry(&schedule, j);
         }
@@ -210,7 +250,16 @@ pub fn hash_chunks(input: &[u8], last_chunk: usize) -> ([u32; 16], [u32; 8]) {
             state = make_next_state(&schedule, j, state);
         }
 
-        let HKState { a, b, c, d, e, f, g, h } = state;
+        let HKState {
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            h,
+        } = state;
 
         hash[0] = hash[0].wrapping_add(a);
         hash[1] = hash[1].wrapping_add(b);
@@ -248,7 +297,7 @@ pub fn hash_sha256(input: &[u8]) -> Hash256 {
         state.h = hash[7];
 
         copy_chunk_to_schedule(block.as_slice(), i, &mut schedule);
-        
+
         for j in 0..48 {
             schedule[j + 16] = calc_schedule_entry(&schedule, j);
         }
@@ -257,7 +306,16 @@ pub fn hash_sha256(input: &[u8]) -> Hash256 {
             state = make_next_state(&schedule, j, state);
         }
 
-        let HKState { a, b, c, d, e, f, g, h } = state;
+        let HKState {
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            h,
+        } = state;
 
         hash[0] = hash[0].wrapping_add(a);
         hash[1] = hash[1].wrapping_add(b);
@@ -274,7 +332,7 @@ pub fn hash_sha256(input: &[u8]) -> Hash256 {
 
 pub fn to_bytes(hash: [u32; 8]) -> [u8; 32] {
     let mut out = [0_u8; 32];
-    
+
     for i in 0..hash.len() {
         let int = hash[i];
         let b1 = ((int & 0xFF00_0000) >> 24) as u8;

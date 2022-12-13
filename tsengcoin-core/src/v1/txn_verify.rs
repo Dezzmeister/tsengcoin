@@ -1,27 +1,28 @@
 use num_bigint::BigUint;
 
-use crate::tsengscript_interpreter::{Token, execute};
+use crate::tsengscript_interpreter::{execute, Token};
 
-use super::{txn_verify_error::{TxnVerifyResult}, transaction::{Transaction, MAX_TXN_AMOUNT, UnsignedTransaction, MIN_TXN_FEE, UnhashedTransaction, hash_txn}, block::MAX_BLOCK_SIZE, state::State};
-use super::txn_verify_error::ErrorKind::EmptyInputs;
-use super::txn_verify_error::ErrorKind::EmptyOutputs;
-use super::txn_verify_error::ErrorKind::TooLarge;
-use super::txn_verify_error::ErrorKind::OutOfRange;
-use super::txn_verify_error::ErrorKind::Coinbase;
-use super::txn_verify_error::ErrorKind::InvalidUTXOIndex;
-use super::txn_verify_error::ErrorKind::Script;
-use super::txn_verify_error::ErrorKind::BadUnlockScript;
-use super::txn_verify_error::ErrorKind::Overspend;
-use super::txn_verify_error::ErrorKind::LowFee;
-use super::txn_verify_error::ErrorKind::DoubleSpend;
-use super::txn_verify_error::ErrorKind::InvalidHash;
-use super::txn_verify_error::ErrorKind::ZeroOutput;
+use super::{
+    block::MAX_BLOCK_SIZE,
+    state::State,
+    transaction::{
+        hash_txn, Transaction, UnhashedTransaction, UnsignedTransaction, MAX_TXN_AMOUNT,
+        MIN_TXN_FEE,
+    },
+    txn_verify_error::{
+        ErrorKind::{
+            BadUnlockScript, Coinbase, DoubleSpend, EmptyInputs, EmptyOutputs, InvalidHash,
+            InvalidUTXOIndex, LowFee, OutOfRange, Overspend, Script, TooLarge, ZeroOutput,
+        },
+        TxnVerifyResult,
+    },
+};
 
 /// Verifies the transaction according to an independent set of rules. If there are no errors,
 /// returns 'true' if the transaction is an orphan, and false if not. If the transaction is not an orphan,
 /// it should be added to the pending transactions pool. This function does not mutate the state in any way
 /// so adding valid transactions to their respective pools is the caller's responsibility.
-/// 
+///
 /// This function may also be used to to verify transactions within new blocks. Again, it is the caller's
 /// responsibility to update the blockchain and the UTXO database accordingly.
 pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<bool> {
@@ -70,7 +71,7 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<boo
     match hash_res {
         Err(_) => return Err(Box::new(InvalidHash)),
         Ok(hash) if hash != tx.hash => return Err(Box::new(InvalidHash)),
-        _ => ()
+        _ => (),
     };
 
     let unsigned_tx: UnsignedTransaction = (&tx).into();
@@ -84,7 +85,6 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<boo
     let mut input_sum = 0;
 
     for input in tx.inputs {
-
         // Each input has to reference a valid UTXO. If not, the transaction is an orphan
         // and must be added to the orphan pool.
         let utxo_opt = utxos.utxos.iter().find(|u| u.txn == input.txn_hash);
@@ -95,11 +95,14 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<boo
         // We need to check if the input transaction hash exists in order to determine
         // which is true.
         if utxo_opt.is_none() {
-            let input_opts = (state.blockchain.find_txn(input.txn_hash), state.get_pending_txn(input.txn_hash));
+            let input_opts = (
+                state.blockchain.find_txn(input.txn_hash),
+                state.get_pending_txn(input.txn_hash),
+            );
 
             match input_opts {
                 (None, None) => return Ok(true),
-                _ => return Err(Box::new(DoubleSpend(input.txn_hash, input.output_idx)))
+                _ => return Err(Box::new(DoubleSpend(input.txn_hash, input.output_idx))),
             };
         }
 
@@ -109,7 +112,7 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<boo
         let txn = match utxo.block {
             Some(block_hash) => {
                 let block_opt = state.blockchain.get_block(block_hash);
-        
+
                 if block_opt.is_none() || utxo.txn != input.txn_hash {
                     return Err(Box::new(InvalidUTXOIndex));
                 }
@@ -121,9 +124,9 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<boo
                 if txn_opt.is_none() {
                     return Err(Box::new(InvalidUTXOIndex));
                 }
-            
+
                 txn_opt.unwrap()
-            },
+            }
             None => {
                 let txn_opt = state.get_pending_txn(utxo.txn);
 
@@ -134,7 +137,7 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<boo
 
                 txn_opt.unwrap()
             }
-        };        
+        };
 
         // Output index must be valid
         if input.output_idx >= txn.outputs.len() {
@@ -152,7 +155,7 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<boo
         let output = &txn.outputs[input.output_idx];
         let lock_script = &output.lock_script;
         let unlock_script = input.unlock_script;
-        
+
         // The unlocking script provided in this transaction has to run first.
         // When it runs, the only item on the stack is the transaction data which was signed by the
         // sender. The unlock script will finish, leaving some data on the stack.
@@ -209,10 +212,10 @@ pub fn check_pending_and_orphans(state: &mut State) {
         match verify_result {
             Ok(true) => {
                 new_orphans.push(txn.clone());
-            },
+            }
             Err(err) => {
                 println!("Pending/orphan transaction rejected due to error: {}", err);
-            },
+            }
             Ok(false) => {
                 state.blockchain.utxo_pool.update_unconfirmed(txn);
                 new_pending.push(txn.clone());

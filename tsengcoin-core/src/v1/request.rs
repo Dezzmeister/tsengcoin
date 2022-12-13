@@ -1,17 +1,27 @@
-use std::{net::{SocketAddr, TcpStream}, error::Error};
-use std::sync::Mutex;
+use std::{
+    error::Error,
+    net::{SocketAddr, TcpStream},
+    sync::Mutex,
+};
 
 use chrono::Utc;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::{v1::{net::DistantNode, block_verify::verify_block}, wallet::Hash256};
+use crate::{
+    v1::{block_verify::verify_block, net::DistantNode},
+    wallet::Hash256,
+};
 
-use super::{net::{PROTOCOL_VERSION, Node}, response::{Response}, state::State, transaction::Transaction, block::Block};
-use super::response::GetBlocksRes::UnknownHash;
-use super::response::GetBlocksRes::DisconnectedChains;
-use super::response::GetBlocksRes::BadChainIndex;
-use super::response::GetBlocksRes::BadHashes;
-use super::response::GetBlocksRes::Blocks;
+use super::{
+    block::Block,
+    net::{Node, PROTOCOL_VERSION},
+    response::{
+        GetBlocksRes::{BadChainIndex, BadHashes, Blocks, DisconnectedChains, UnknownHash},
+        Response,
+    },
+    state::State,
+    transaction::Transaction,
+};
 
 const MAX_UNKNOWN_HASH_ATTEMPTS: usize = 3;
 
@@ -21,7 +31,7 @@ pub enum Request {
     Advertise(AdvertiseReq),
     GetBlocks(GetBlocksReq),
     NewTxn(Transaction),
-    NewBlock(Block)
+    NewBlock(Block),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -30,21 +40,24 @@ pub struct GetAddrReq {
     pub addr_you: SocketAddr,
     pub listen_port: u16,
     pub best_height: usize,
-    pub best_hash: Hash256
+    pub best_hash: Hash256,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AdvertiseReq {
-    pub addr_me: SocketAddr
+    pub addr_me: SocketAddr,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetBlocksReq {
     pub your_hash: Hash256,
-    pub my_hash: Hash256
+    pub my_hash: Hash256,
 }
 
-pub fn get_first_peers(known_node: SocketAddr, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
+pub fn get_first_peers(
+    known_node: SocketAddr,
+    state_mut: &Mutex<State>,
+) -> Result<(), Box<dyn Error>> {
     let mut guard = state_mut.lock().unwrap();
     let state = &mut *guard;
 
@@ -55,7 +68,7 @@ pub fn get_first_peers(known_node: SocketAddr, state_mut: &Mutex<State>) -> Resu
         addr_you: known_node,
         listen_port: state.local_addr_me.port(),
         best_height,
-        best_hash: state.blockchain.top_hash(chain_idx)
+        best_hash: state.blockchain.top_hash(chain_idx),
     });
 
     let res = send_req(&req, &known_node)?;
@@ -75,20 +88,21 @@ pub fn get_first_peers(known_node: SocketAddr, state_mut: &Mutex<State>) -> Resu
                 addr: known_node,
                 last_send: Utc::now(),
                 best_height: Some(data.best_height),
-                best_hash: Some(data.best_hash)
+                best_hash: Some(data.best_hash),
             });
 
-            state.network.known_nodes.push(DistantNode {
-                addr: known_node
-            });
+            state
+                .network
+                .known_nodes
+                .push(DistantNode { addr: known_node });
 
             // TODO: Bootstrap with a few nodes to reduce the chances of a node lying about your remote IP
             state.remote_addr_me = Some(data.addr_you);
             state.network.clean(data.addr_you);
 
             Ok(())
-        },
-        _ => Err("Known node responded with nonsense".into())
+        }
+        _ => Err("Known node responded with nonsense".into()),
     }
 }
 
@@ -96,11 +110,13 @@ pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), B
     let mut guard = state_mut.lock().unwrap();
     let state = &mut *guard;
 
-    let addrs: Vec<SocketAddr> = 
-        state.network.peers
-            .iter()
-            .filter(|n| *n != seed_addr)
-            .map(|n| n.addr).collect();
+    let addrs: Vec<SocketAddr> = state
+        .network
+        .peers
+        .iter()
+        .filter(|n| *n != seed_addr)
+        .map(|n| n.addr)
+        .collect();
 
     let (best_height, chain_idx, _) = state.blockchain.best_chain();
 
@@ -110,7 +126,7 @@ pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), B
             addr_you: addr,
             listen_port: state.local_addr_me.port(),
             best_height,
-            best_hash: state.blockchain.top_hash(chain_idx)
+            best_hash: state.blockchain.top_hash(chain_idx),
         });
 
         let result = send_req(&req, &addr);
@@ -126,7 +142,7 @@ pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), B
                         peer.best_hash = Some(data.best_hash);
                     }
                 }
-            },
+            }
             // Remove nodes that return nonsense
             _ => state.network.remove(addr),
         }
@@ -139,7 +155,12 @@ pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), B
     let addr_me = state.remote_addr_me.unwrap();
 
     state.network.clean(addr_me);
-    state.network.find_new_friends(state.port(), addr_me, best_height, state.blockchain.top_hash(chain_idx));
+    state.network.find_new_friends(
+        state.port(),
+        addr_me,
+        best_height,
+        state.blockchain.top_hash(chain_idx),
+    );
 
     Ok(())
 }
@@ -152,8 +173,8 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
     let best_node = match best_node_opt {
         None => {
             return Err("No suitable nodes to update local blockchain".into());
-        },
-        Some(node) => node
+        }
+        Some(node) => node,
     };
 
     if best_node.best_height.unwrap() == 1 {
@@ -166,7 +187,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
     // Now we ask the other node to send us some blocks. If we disconnected during a fork, we may have some
     // blocks that are no longer on the blockchain. We will know this if we get an `UnknownHash` response,
     // so we should try again a few different times with the previous hash.
-    
+
     let mut attempt: usize = 0;
 
     while attempt < MAX_UNKNOWN_HASH_ATTEMPTS && block_idx > 0 {
@@ -189,7 +210,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
                                     Ok(false) => (),
                                     Err(err) => {
                                         println!("Received a bad block: {}", err);
-                                    },
+                                    }
                                     Ok(true) => {
                                         println!("Received an orphan block as part of a blockchain from another peer");
                                         // TODO: Remove peer for this nonsense. This really is nonsense because we checked earlier that
@@ -202,19 +223,22 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
                             return Err("Received block with bad prev hash".into());
                         }
                         break;
-                    },
+                    }
                     UnknownHash(_) => {
                         block_idx -= 1;
                         hash = state.blockchain.blocks[block_idx - 1].header.hash;
 
                         println!("Received `UnknownHash` while trying to download blockchain");
-                    },
-                    DisconnectedChains => return Err("Tried to download blockchain across unconnected forks".into()),
-                    BadChainIndex => return Err("Tried to download blockchain with bad chain index".into()),
+                    }
+                    DisconnectedChains => {
+                        return Err("Tried to download blockchain across unconnected forks".into())
+                    }
+                    BadChainIndex => {
+                        return Err("Tried to download blockchain with bad chain index".into())
+                    }
                     BadHashes => return Err("Tried to download blockchain with bad hashes".into()),
-                    
                 }
-            },
+            }
             _ => {
                 // TODO: Remove node and try again
                 return Err("Peer node returned nonsense".into());
@@ -234,9 +258,7 @@ pub fn advertise_self(state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
     let state = &*guard;
     let addr_me = state.remote_addr_me.unwrap();
 
-    let req = Request::Advertise(AdvertiseReq {
-        addr_me
-    });
+    let req = Request::Advertise(AdvertiseReq { addr_me });
 
     state.network.broadcast_msg(&req);
 

@@ -1,21 +1,32 @@
-use std::{collections::HashMap, error::Error};
-use std::sync::Mutex;
+use std::{collections::HashMap, error::Error, sync::Mutex};
 
 use ring::signature::KeyPair;
 
-use crate::v1::chain_request::make_dh_connect_req;
-use crate::v1::encrypted_msg::{ChainRequest, ChainChatReq, is_gui_only};
-use crate::v1::request::send_new_txn;
-use crate::v1::{VERSION};
-use crate::v1::transaction::{p2pkh_utxos_for_addr, make_p2pkh_lock, collect_enough_change, TxnOutput, UnsignedTransaction, sign_txn, make_p2pkh_unlock, TxnInput, UnhashedTransaction, hash_txn};
-use crate::v1::txn_verify::verify_transaction;
-use crate::wallet::{b58c_to_address, address_to_b58c};
-use crate::{command::{dispatch_command, CommandInvocation, Command, FieldType, Field, Flag}, v1::{state::State}};
+use crate::{
+    command::{dispatch_command, Command, CommandInvocation, Field, FieldType, Flag},
+    v1::{
+        chain_request::make_dh_connect_req,
+        encrypted_msg::{is_gui_only, ChainChatReq, ChainRequest},
+        request::send_new_txn,
+        state::State,
+        transaction::{
+            collect_enough_change, hash_txn, make_p2pkh_lock, make_p2pkh_unlock,
+            p2pkh_utxos_for_addr, sign_txn, TxnInput, TxnOutput, UnhashedTransaction,
+            UnsignedTransaction,
+        },
+        txn_verify::verify_transaction,
+        VERSION,
+    },
+    wallet::{address_to_b58c, b58c_to_address},
+};
 
 #[cfg(feature = "debug")]
 use super::debug::make_command_map;
 
-fn getpeerinfo(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn getpeerinfo(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
@@ -27,7 +38,10 @@ fn getpeerinfo(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) ->
     Ok(())
 }
 
-fn getknowninfo(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn getknowninfo(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
@@ -39,7 +53,10 @@ fn getknowninfo(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -
     Ok(())
 }
 
-fn getblock(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn getblock(
+    invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let hash_vec = hex::decode(invocation.get_field("hash").unwrap())?;
     let header_only = invocation.get_flag("header-only");
     let guard = state.unwrap().lock().unwrap();
@@ -52,16 +69,28 @@ fn getblock(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Res
 
     match block_opt {
         None => println!("No such block exists"),
-        Some((block, chain, pos)) if chain == 0 && !header_only => println!("Block found in main chain at pos {}\n{:#?}", pos, block),
-        Some((block, _, pos)) if !header_only => println!("Block found in fork at pos {}\n{:#?}", pos, block),
-        Some((block, chain, pos)) if chain == 0 && header_only => println!("Block found in main chain at pos {}\n{:#?}", pos, block.header),
-        Some((block, _, pos)) => println!("Block found in fork at pos {}\n{:#?}", pos, block.header)
+        Some((block, chain, pos)) if chain == 0 && !header_only => {
+            println!("Block found in main chain at pos {}\n{:#?}", pos, block)
+        }
+        Some((block, _, pos)) if !header_only => {
+            println!("Block found in fork at pos {}\n{:#?}", pos, block)
+        }
+        Some((block, chain, pos)) if chain == 0 && header_only => println!(
+            "Block found in main chain at pos {}\n{:#?}",
+            pos, block.header
+        ),
+        Some((block, _, pos)) => {
+            println!("Block found in fork at pos {}\n{:#?}", pos, block.header)
+        }
     }
 
     Ok(())
 }
 
-fn gettxn(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn gettxn(
+    invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let hash_vec = hex::decode(invocation.get_field("hash").unwrap())?;
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
@@ -71,19 +100,28 @@ fn gettxn(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Resul
 
     let orphan_opt = state.get_orphan_txn(hash);
     if orphan_opt.is_some() {
-        println!("Transaction found in orphan pool: {:#?}", orphan_opt.unwrap());
+        println!(
+            "Transaction found in orphan pool: {:#?}",
+            orphan_opt.unwrap()
+        );
         return Ok(());
     }
 
     let pending_opt = state.get_pending_txn(hash);
     if pending_opt.is_some() {
-        println!("Transaction found in pending pool: {:#?}", pending_opt.unwrap());
+        println!(
+            "Transaction found in pending pool: {:#?}",
+            pending_opt.unwrap()
+        );
         return Ok(());
     }
 
     let confirmed_opt = state.blockchain.find_txn(hash);
     if confirmed_opt.is_some() {
-        println!("Transaction found in blockchain: {:#?}", confirmed_opt.unwrap());
+        println!(
+            "Transaction found in blockchain: {:#?}",
+            confirmed_opt.unwrap()
+        );
         return Ok(());
     }
 
@@ -92,7 +130,10 @@ fn gettxn(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Resul
     Ok(())
 }
 
-fn blockchain_stats(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn blockchain_stats(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
@@ -100,40 +141,52 @@ fn blockchain_stats(_invocation: &CommandInvocation, state: Option<&Mutex<State>
 
     match chain_idx {
         0 => println!("The best chain is the main chain"),
-        _ => println!("The best chain is a fork")
+        _ => println!("The best chain is a fork"),
     };
     println!("Height of best chain: {best_height}");
-    println!("Latest block on best chain: {}", hex::encode(&state.blockchain.top_hash(*chain_idx)));
+    println!(
+        "Latest block on best chain: {}",
+        hex::encode(&state.blockchain.top_hash(*chain_idx))
+    );
 
     println!("{} forks", &state.blockchain.forks.len());
 
     Ok(())
 }
 
-fn balance_p2pkh(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn balance_p2pkh(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
     let my_utxos = p2pkh_utxos_for_addr(state, state.address);
-    
-    let total_unspent = 
-        my_utxos
-            .iter()
-            .fold(0, |a, e| a + e.amount);
+
+    let total_unspent = my_utxos.iter().fold(0, |a, e| a + e.amount);
 
     println!("You have {} total unspent TsengCoin", total_unspent);
-    
+
     Ok(())
 }
 
-fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
-    let amount = invocation.get_field("amount").unwrap().parse::<u64>().unwrap();
+fn send_coins_p2pkh(
+    invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
+    let amount = invocation
+        .get_field("amount")
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
     let fee = invocation.get_field("fee").unwrap().parse::<u64>().unwrap();
     let show_structure = invocation.get_flag("show-structure");
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
-    let dest_address = state.friends.get_address(invocation.get_field("address").unwrap())?;
+    let dest_address = state
+        .friends
+        .get_address(invocation.get_field("address").unwrap())?;
 
     let required_input = amount + fee;
 
@@ -141,17 +194,17 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
         None => {
             println!("You don't have enough TsengCoin to make that transaction");
             return Ok(());
-        },
-        Some(utxos) => utxos
+        }
+        Some(utxos) => utxos,
     };
 
-    let actual_input = 
-        change
-            .iter()
-            .fold(0, |a, e| a + e.amount);
-    
+    let actual_input = change.iter().fold(0, |a, e| a + e.amount);
+
     let lock_script = make_p2pkh_lock(&dest_address);
-    let mut outputs: Vec<TxnOutput> = vec![TxnOutput { amount, lock_script }];
+    let mut outputs: Vec<TxnOutput> = vec![TxnOutput {
+        amount,
+        lock_script,
+    }];
 
     let change_back = actual_input - required_input;
 
@@ -160,12 +213,12 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
 
         outputs.push(TxnOutput {
             amount: change_back,
-            lock_script: my_lock_script
+            lock_script: my_lock_script,
         });
     }
 
     let metadata = String::from("");
-    
+
     let unsigned_txn = UnsignedTransaction {
         version: VERSION,
         outputs: outputs.clone(),
@@ -175,17 +228,14 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
     let sig = sign_txn(&unsigned_txn, &state.keypair)?;
     let pubkey = state.keypair.public_key().as_ref().to_vec();
     let unlock_script = make_p2pkh_unlock(sig, pubkey);
-    let txn_inputs =
-        change
-            .iter()
-            .map(|c| {
-                TxnInput {
-                    txn_hash: c.txn,
-                    output_idx: c.output,
-                    unlock_script: unlock_script.clone(),
-                }
-            })
-            .collect::<Vec<TxnInput>>();
+    let txn_inputs = change
+        .iter()
+        .map(|c| TxnInput {
+            txn_hash: c.txn,
+            output_idx: c.output,
+            unlock_script: unlock_script.clone(),
+        })
+        .collect::<Vec<TxnInput>>();
 
     let unhashed = UnhashedTransaction {
         version: VERSION,
@@ -205,7 +255,7 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
         Ok(_) => {
             send_new_txn(full_txn, state)?;
             println!("Successfully submitted transaction");
-        },
+        }
         Err(err) => {
             println!("There was a problem verifying your transaction: {}", err)
         }
@@ -214,7 +264,10 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
     Ok(())
 }
 
-fn hashrate(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn hashrate(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
@@ -223,7 +276,10 @@ fn hashrate(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Re
     Ok(())
 }
 
-fn connect_to(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn connect_to(
+    invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let name = invocation.get_field("address").unwrap();
     let req_amount = invocation.get_field("req-amount").unwrap().parse::<u64>()?;
     let req_fee = invocation.get_field("fee").unwrap().parse::<u64>()?;
@@ -237,7 +293,10 @@ fn connect_to(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> R
     Ok(())
 }
 
-fn alias(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn alias(
+    invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let pkh = invocation.get_field("address").unwrap();
     let name = invocation.get_field("name").unwrap();
     let mut guard = state.unwrap().lock().unwrap();
@@ -250,7 +309,10 @@ fn alias(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result
     Ok(())
 }
 
-fn get_aliases(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn get_aliases(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let mut guard = state.unwrap().lock().unwrap();
     let state = &mut *guard;
 
@@ -261,8 +323,15 @@ fn get_aliases(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) ->
     Ok(())
 }
 
-fn set_exclusivity(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
-    let exclusivity = invocation.get_field("exclusivity").unwrap().parse::<u64>().unwrap_or(u64::MAX);
+fn set_exclusivity(
+    invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
+    let exclusivity = invocation
+        .get_field("exclusivity")
+        .unwrap()
+        .parse::<u64>()
+        .unwrap_or(u64::MAX);
     let mut guard = state.unwrap().lock().unwrap();
     let state = &mut *guard;
 
@@ -271,7 +340,10 @@ fn set_exclusivity(invocation: &CommandInvocation, state: Option<&Mutex<State>>)
     Ok(())
 }
 
-fn get_exclusivity(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn get_exclusivity(
+    _invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let mut guard = state.unwrap().lock().unwrap();
     let state = &mut *guard;
 
@@ -279,7 +351,10 @@ fn get_exclusivity(_invocation: &CommandInvocation, state: Option<&Mutex<State>>
     Ok(())
 }
 
-fn start_chat(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
+fn start_chat(
+    invocation: &CommandInvocation,
+    state: Option<&Mutex<State>>,
+) -> Result<(), Box<dyn Error>> {
     let name = invocation.get_field("address").unwrap();
     let req_amount = invocation.get_field("req-amount").unwrap().parse::<u64>()?;
     let req_fee = invocation.get_field("fee").unwrap().parse::<u64>()?;
@@ -288,9 +363,7 @@ fn start_chat(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> R
     let state = &mut *guard;
 
     let dest_address = state.friends.get_address(name)?;
-    let intent = ChainRequest::ChainChat(ChainChatReq {
-        msg: message
-    });
+    let intent = ChainRequest::ChainChat(ChainChatReq { msg: message });
 
     if is_gui_only(&intent) && !state.has_gui() {
         println!("Chat requests can only be made if TsengCoin is running with a GUI. See the `connect` command for more info.");
@@ -317,45 +390,39 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         expected_fields: vec![],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Get info about all nodes that this node knows about")
+        desc: String::from("Get info about all nodes that this node knows about"),
     };
     let getblock_cmd: Command<&Mutex<State>> = Command {
         processor: getblock,
-        expected_fields: vec![
-            Field::new(
-                "hash",
-                FieldType::Pos(0),
-                "The hash of this block"
-            )
-        ],
-        flags: vec![
-            Flag::new(
-                "header-only",
-                "Show only the block header. This will omit the transactions and some other info."
-            )
-        ],
+        expected_fields: vec![Field::new(
+            "hash",
+            FieldType::Pos(0),
+            "The hash of this block",
+        )],
+        flags: vec![Flag::new(
+            "header-only",
+            "Show only the block header. This will omit the transactions and some other info.",
+        )],
         optionals: vec![],
         desc: String::from("Get the block with the given hash"),
     };
     let gettxn_cmd: Command<&Mutex<State>> = Command {
         processor: gettxn,
-        expected_fields: vec![
-            Field::new(
-                "hash",
-                FieldType::Pos(0),
-                "The hash of this transaction"
-            )
-        ],
+        expected_fields: vec![Field::new(
+            "hash",
+            FieldType::Pos(0),
+            "The hash of this transaction",
+        )],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Get the transaction with the given hash")
+        desc: String::from("Get the transaction with the given hash"),
     };
     let blockchain_stats_cmd: Command<&Mutex<State>> = Command {
         processor: blockchain_stats,
         expected_fields: vec![],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Get some info about the current state of the blockchain")
+        desc: String::from("Get some info about the current state of the blockchain"),
     };
     let balance_p2pkh_cmd: Command<&Mutex<State>> = Command {
         processor: balance_p2pkh,
@@ -397,7 +464,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         expected_fields: vec![],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Get the hashrate of the miner, if it's running.")
+        desc: String::from("Get the hashrate of the miner, if it's running."),
     };
     let connect_to_cmd: Command<&Mutex<State>> = Command {
         processor: connect_to,
@@ -428,24 +495,20 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
             Field::new(
                 "address",
                 FieldType::Pos(0),
-                "The address to give an alias to"
+                "The address to give an alias to",
             ),
-            Field::new(
-                "name",
-                FieldType::Pos(1),
-                "The name/alias for the address"
-            )
+            Field::new("name", FieldType::Pos(1), "The name/alias for the address"),
         ],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Give a name to an address whose owner you know")
+        desc: String::from("Give a name to an address whose owner you know"),
     };
     let get_aliases_cmd: Command<&Mutex<State>> = Command {
         processor: get_aliases,
         expected_fields: vec![],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("List all aliases")
+        desc: String::from("List all aliases"),
     };
     let set_exclusivity_cmd: Command<&Mutex<State>> = Command {
         processor: set_exclusivity,
@@ -465,7 +528,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
         expected_fields: vec![],
         flags: vec![],
         optionals: vec![],
-        desc: String::from("Print your current exclusivity")
+        desc: String::from("Print your current exclusivity"),
     };
     let start_chat_cmd: Command<&Mutex<State>> = Command {
         processor: start_chat,

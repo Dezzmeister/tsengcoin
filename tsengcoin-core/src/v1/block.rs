@@ -1,22 +1,32 @@
-use std::mem::{size_of_val, size_of};
+use std::mem::{size_of, size_of_val};
 
-use chrono::{Duration};
+use chrono::Duration;
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_traits::Zero;
 use ring::digest::{Context, SHA256};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::{wallet::{Hash256, b58c_to_address}, hash::hash_sha256};
+use crate::{
+    hash::hash_sha256,
+    wallet::{b58c_to_address, Hash256},
+};
 
-use super::{transaction::{Transaction, make_coinbase_txn, UTXOPool, build_utxos_from_confirmed, ConfirmedTransaction}, block_verify::verify_block, state::State, txn_verify::check_pending_and_orphans};
+use super::{
+    block_verify::verify_block,
+    state::State,
+    transaction::{
+        build_utxos_from_confirmed, make_coinbase_txn, ConfirmedTransaction, Transaction, UTXOPool,
+    },
+    txn_verify::check_pending_and_orphans,
+};
 
 /// Max size of a block in bytes
 pub const MAX_BLOCK_SIZE: usize = 16384;
 
 pub const MAX_TRANSACTION_FIELD_SIZE: usize = MAX_BLOCK_SIZE - size_of::<BlockHeader>();
 
-lazy_static!{
+lazy_static! {
     pub static ref BLOCK_TIMESTAMP_TOLERANCE: Duration = Duration::hours(2);
 }
 
@@ -43,7 +53,7 @@ pub struct BlockHeader {
 #[derive(Debug)]
 pub struct RawBlock {
     pub header: RawBlockHeader,
-    pub transactions: Vec<Transaction>
+    pub transactions: Vec<Transaction>,
 }
 
 /// Everything except the hash, so that this block can be hashed
@@ -62,14 +72,14 @@ pub struct BlockchainDB {
     pub blocks: Vec<Block>,
     pub forks: Vec<ForkChain>,
     pub orphans: Vec<Block>,
-    pub utxo_pool: UTXOPool
+    pub utxo_pool: UTXOPool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ForkChain {
     /// The index of the previous block in the MAIN chain.
     pub prev_index: usize,
-    pub blocks: Vec<Block>
+    pub blocks: Vec<Block>,
 }
 
 impl RawBlockHeader {
@@ -90,7 +100,7 @@ impl From<Block> for RawBlock {
     fn from(block: Block) -> Self {
         Self {
             header: (&block.header).into(),
-            transactions: block.transactions
+            transactions: block.transactions,
         }
     }
 }
@@ -103,7 +113,7 @@ impl From<&BlockHeader> for RawBlockHeader {
             merkle_root: block.merkle_root,
             timestamp: block.timestamp,
             difficulty_target: block.difficulty_target,
-            nonce: block.nonce
+            nonce: block.nonce,
         }
     }
 }
@@ -141,10 +151,7 @@ impl Block {
     }
 
     pub fn size(&self) -> usize {
-        self.header.size() +
-        self.transactions
-            .iter()
-            .fold(0, |a, e| a + e.size())
+        self.header.size() + self.transactions.iter().fold(0, |a, e| a + e.size())
     }
 
     /// Gets all transactions in the block, consuming the block in the
@@ -161,13 +168,13 @@ impl Block {
 
 impl BlockHeader {
     pub fn size(&self) -> usize {
-        size_of_val(&self.version) +
-        size_of_val(&self.prev_hash) +
-        size_of_val(&self.merkle_root) +
-        size_of_val(&self.timestamp) +
-        size_of_val(&self.difficulty_target) +
-        size_of_val(&self.nonce) +
-        size_of_val(&self.hash)
+        size_of_val(&self.version)
+            + size_of_val(&self.prev_hash)
+            + size_of_val(&self.merkle_root)
+            + size_of_val(&self.timestamp)
+            + size_of_val(&self.difficulty_target)
+            + size_of_val(&self.nonce)
+            + size_of_val(&self.hash)
     }
 }
 
@@ -185,9 +192,10 @@ impl BlockchainDB {
 
         // The total difficulty targets from the point of the earliest fork to the last block on the
         // main chain
-        let main_diff = self.blocks[start_i..].iter().fold(BigUint::zero(), |a, e| a + BigUint::from_bytes_be(&e.header.difficulty_target));
-        let fork_diffs = 
-            self.forks
+        let main_diff = self.blocks[start_i..].iter().fold(BigUint::zero(), |a, e| {
+            a + BigUint::from_bytes_be(&e.header.difficulty_target)
+        });
+        let fork_diffs = self.forks
                 .iter()
                 .map(|f| {
                     // Add up the difficulties between the earliest fork and the current fork (on the main chain)
@@ -220,7 +228,11 @@ impl BlockchainDB {
         }
 
         // There may be two forks with duplicate validity but we don't care because this is rare
-        (self.forks[min_index].blocks.len() + self.forks[min_index].prev_index, min_index + 1, false)
+        (
+            self.forks[min_index].blocks.len() + self.forks[min_index].prev_index,
+            min_index + 1,
+            false,
+        )
     }
 
     pub fn get_chain(&'_ self, index: usize) -> &'_ Vec<Block> {
@@ -284,7 +296,7 @@ impl BlockchainDB {
 
     /// Returns the blocks from the starting position to the end position. It is the caller's
     /// job to ensure that a valid chain index is passed in as well as valid `start_pos` and `end_pos`.
-    /// 
+    ///
     /// If the chain index is nonzero, positions are still interpreted as starting from the genesis
     /// block. The blocks returned may consist of some in the main chain and some in the fork.
     /// The `end_pos` here is the absolute position from the genesis block, NOT the position in the chain.
@@ -303,13 +315,13 @@ impl BlockchainDB {
 
         if start_pos_offset < 0 && end_pos_offset < 0 {
             let main_blocks = self.blocks[start_pos..end_pos].to_vec();
-            
+
             for block in main_blocks {
                 out.push(block);
             }
         } else if start_pos_offset < 0 {
             let main_blocks = self.blocks[start_pos..chain.prev_index].to_vec();
-            
+
             for block in main_blocks {
                 out.push(block);
             }
@@ -398,14 +410,14 @@ impl BlockchainDB {
         let (_, chain, pos) = self.get_block(block.header.prev_hash).unwrap();
         let top = match chain {
             0 => self.blocks.last().unwrap(),
-            i => self.forks[i - 1].blocks.last().unwrap()
+            i => self.forks[i - 1].blocks.last().unwrap(),
         };
 
         // Best condition, we don't need to create a new fork
         if top.header.hash == block.header.prev_hash {
             match chain {
                 0 => self.blocks.push(block),
-                i => self.forks[i - 1].blocks.push(block)
+                i => self.forks[i - 1].blocks.push(block),
             };
             return;
         }
@@ -489,13 +501,13 @@ pub fn check_orphans(state: &mut State) {
             // Block is no longer an orphan!
             Ok(false) => {
                 orphans_to_remove.push(i);
-            },
+            }
             Err(err) => {
                 println!("Error verifying orphan block: {}", err);
                 orphans_to_remove.push(i);
-            },
+            }
             // Block is still an orphan
-            Ok(true) => ()
+            Ok(true) => (),
         };
     }
 
@@ -508,7 +520,7 @@ pub fn check_orphans(state: &mut State) {
 /// this function will get any blocks that need to be removed from the blockchain,
 /// and it will add their transactions back to the pending/orphan pools as well as
 /// update the UTXO database accordingly.
-/// 
+///
 /// Returns true if forks were present and resolved.
 pub fn resolve_forks(state: &mut State) -> bool {
     let mut fork_blocks = state.blockchain.resolve_forks();
@@ -535,15 +547,18 @@ pub fn resolve_forks(state: &mut State) -> bool {
 }
 
 pub fn genesis_block() -> Block {
-    let genesis_miner = b58c_to_address(String::from("2LuJkN1xDRRM2R2h2H4qnSspy4qmwoZfor")).expect("Failed to create genesis block");
+    let genesis_miner = b58c_to_address(String::from("2LuJkN1xDRRM2R2h2H4qnSspy4qmwoZfor"))
+        .expect("Failed to create genesis block");
     let coinbase = make_coinbase_txn(&genesis_miner, String::from("genesis block"), 0, [0x69; 32]);
 
-    let target_bytes = hex::decode("0000000f00000000000000000000000000000000000000000000000000000000").unwrap();
+    let target_bytes =
+        hex::decode("0000000f00000000000000000000000000000000000000000000000000000000").unwrap();
     let mut target = [0_u8; 32];
     target.copy_from_slice(&target_bytes);
 
     // This nonce will produce the hash "0000000c9785be4989caa7cf9b7dca9161bbe8334f692fbf277fce1e23f9df2a"
-    let nonce_bytes = hex::decode("0487ec8e16f44da6d0d17e6e9c2bdc097c1eda445879a7df3d96a06b4acd0aa2").unwrap();
+    let nonce_bytes =
+        hex::decode("0487ec8e16f44da6d0d17e6e9c2bdc097c1eda445879a7df3d96a06b4acd0aa2").unwrap();
     let mut nonce = [0_u8; 32];
     nonce.copy_from_slice(&nonce_bytes);
 
@@ -560,7 +575,7 @@ pub fn genesis_block() -> Block {
         timestamp: 1669939462,
         difficulty_target: target,
         nonce,
-        hash: [0; 32]
+        hash: [0; 32],
     };
 
     let raw: RawBlockHeader = (&header).into();
@@ -595,10 +610,7 @@ pub fn make_merkle_root(txns: &[Transaction]) -> Hash256 {
         return txns[0].hash;
     }
 
-    let mut hashes = txns
-        .iter()
-        .map(|t| t.hash)
-        .collect::<Vec<Hash256>>();
+    let mut hashes = txns.iter().map(|t| t.hash).collect::<Vec<Hash256>>();
 
     while hashes.len() > 1 {
         hashes = merkle_round(hashes);
