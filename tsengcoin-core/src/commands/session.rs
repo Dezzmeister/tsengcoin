@@ -45,7 +45,7 @@ fn getblock(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Res
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
-    let mut hash = [0 as u8; 32];
+    let mut hash = [0_u8; 32];
     hash[32 - hash_vec.len()..].copy_from_slice(&hash_vec);
 
     let block_opt = state.blockchain.get_block(hash);
@@ -66,7 +66,7 @@ fn gettxn(invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> Resul
     let guard = state.unwrap().lock().unwrap();
     let state = &*guard;
 
-    let mut hash = [0 as u8; 32];
+    let mut hash = [0_u8; 32];
     hash[32 - hash_vec.len()..].copy_from_slice(&hash_vec);
 
     let orphan_opt = state.get_orphan_txn(hash);
@@ -198,7 +198,7 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
     let full_txn = unhashed.to_hashed(hash);
 
     if show_structure {
-        println!("{:#?}", full_txn.clone());
+        println!("{:#?}", full_txn);
     }
 
     match verify_transaction(full_txn.clone(), state) {
@@ -207,7 +207,7 @@ fn send_coins_p2pkh(invocation: &CommandInvocation, state: Option<&Mutex<State>>
             println!("Successfully submitted transaction");
         },
         Err(err) => {
-            println!("There was a problem verifying your transaction: {}", err.to_string())
+            println!("There was a problem verifying your transaction: {}", err)
         }
     };
 
@@ -535,7 +535,7 @@ pub fn listen_for_commands(state_mut: &Mutex<State>) {
 
         let args: Vec<&str> = buffer.trim().split(' ').collect();
 
-        if args.len() < 1 {
+        if args.is_empty() {
             println!("Need to supply a command");
             continue;
         }

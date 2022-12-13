@@ -144,7 +144,7 @@ fn make_message_block(input: &[u8]) -> (Vec<u8>, usize) {
     let num_chunks = ((input.len() + 8) / 64) + 1;
     let bit_length = split((input.len() * 8) as u64);
     let block_length = num_chunks * BYTES_PER_BLOCK;
-    let mut v = vec![0 as u8; block_length];
+    let mut v = vec![0_u8; block_length];
 
     v[0..input.len()].copy_from_slice(input);
     v[input.len()] = INPUT_PAD;
@@ -187,7 +187,7 @@ pub fn hash_chunks(input: &[u8], last_chunk: usize) -> ([u32; 16], [u32; 8]) {
     let (block, _) = make_message_block(input);
     let mut schedule: MessageSchedule = [0; 64];
     let mut state = HKState::default();
-    let mut hash = [0 as u32; 8];
+    let mut hash = [0_u32; 8];
     hash.copy_from_slice(&H);
 
     for i in 0..last_chunk {
@@ -234,7 +234,7 @@ pub fn hash_sha256(input: &[u8]) -> Hash256 {
     let (block, num_chunks) = make_message_block(input);
     let mut schedule: MessageSchedule = [0; 64];
     let mut state = HKState::default();
-    let mut hash = [0 as u32; 8];
+    let mut hash = [0_u32; 8];
     hash.copy_from_slice(&H);
 
     for i in 0..num_chunks {
@@ -273,7 +273,7 @@ pub fn hash_sha256(input: &[u8]) -> Hash256 {
 }
 
 pub fn to_bytes(hash: [u32; 8]) -> [u8; 32] {
-    let mut out = [0 as u8; 32];
+    let mut out = [0_u8; 32];
     
     for i in 0..hash.len() {
         let int = hash[i];

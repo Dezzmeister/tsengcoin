@@ -79,11 +79,11 @@ pub fn main_gui_loop(state_arc: Arc<Mutex<State>>) {
 
 pub fn is_connection_accepted(sender_name: String, req_channel: &Sender<GUIRequest>, res_channel: &Receiver<GUIResponse>, with_gui: bool) -> Result<bool, Box<dyn Error>> {
     if !with_gui {
-        req_channel.send(GUIRequest::ProposeConnection(sender_name.clone()))?;
+        req_channel.send(GUIRequest::ProposeConnection(sender_name))?;
 
         return match res_channel.recv() {
             Ok(GUIResponse::ProposeConnection(was_accepted)) => Ok(was_accepted),
-            _ => Err("Error receving from GUI response channel")?
+            _ => return Err("Error receving from GUI response channel".into())
         };
     }
 
@@ -93,7 +93,7 @@ pub fn is_connection_accepted(sender_name: String, req_channel: &Sender<GUIReque
 
     match dialog_res {
         Ok(was_accepted) => Ok(was_accepted),
-        Err(_) => Err("Error reading from temporary GUI channel")?
+        Err(_) => Err("Error reading from temporary GUI channel".into())
     }
 }
 

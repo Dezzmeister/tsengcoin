@@ -48,14 +48,14 @@ pub fn load_keypair(password: &str, path: &str) -> Result<EcdsaKeyPair, Box<dyn 
 
     let keypair_decrypted = opening_key.open_in_place(Aad::empty(), &mut keypair_ciphertext).expect("Failed to decrypt keypair file");
     let alg = &ECDSA_P256_SHA256_ASN1_SIGNING;
-    let keypair = EcdsaKeyPair::from_pkcs8(alg, &keypair_decrypted).expect("Failed to create ECDSA keypair");
+    let keypair = EcdsaKeyPair::from_pkcs8(alg, keypair_decrypted).expect("Failed to create ECDSA keypair");
 
     Ok(keypair)
 }
 
 pub fn create_keypair(password: &str, save_to: &str) -> Result<EcdsaKeyPair, Box<dyn Error>> {
     if Path::new(save_to).exists() {
-        return Err(format!("Keypair already exists at {}", save_to))?;
+        return Err(format!("Keypair already exists at {}", save_to).into());
     }
 
     let salt: [u8; 16] = salt_from_password(password);
@@ -82,7 +82,7 @@ pub fn create_keypair(password: &str, save_to: &str) -> Result<EcdsaKeyPair, Box
 
 pub fn address_from_public_key(public_key: &Vec<u8>) -> Address {
     let mut context = Context::new(&SHA256);
-    context.update(&public_key);
+    context.update(public_key);
     let digest = context.finish();
     let sha256_hash = digest.as_ref();
 
@@ -90,7 +90,7 @@ pub fn address_from_public_key(public_key: &Vec<u8>) -> Address {
     hasher160.update(sha256_hash);
     let result = hasher160.finalize().to_vec();
 
-    let mut out = [0 as u8; 20];
+    let mut out = [0_u8; 20];
     out.copy_from_slice(&result);
 
     out
@@ -104,12 +104,12 @@ pub fn b58c_to_address(b58c: String) -> Result<Address, Box<dyn Error>> {
     let res = b58c.from_base58check();
 
     match res {
-        Err(FromBase58CheckError::InvalidChecksum) => Err("Invalid checksum")?,
-        Err(FromBase58CheckError::InvalidBase58(_)) => Err("Invalid base58")?,
-        Ok((version, _)) if version != B58C_VERSION_PREFIX => Err("Invalid version")?,
+        Err(FromBase58CheckError::InvalidChecksum) => Err("Invalid checksum".into()),
+        Err(FromBase58CheckError::InvalidBase58(_)) => Err("Invalid base58".into()),
+        Ok((version, _)) if version != B58C_VERSION_PREFIX => Err("Invalid version".into()),
         Ok((_, bytes)) => {
             let offset = 20 - bytes.len();
-            let mut out = [0 as u8; 20];
+            let mut out = [0_u8; 20];
 
             // Pad 20-byte integer with correct number of zeros
             out[offset..].copy_from_slice(&bytes);
@@ -121,7 +121,7 @@ pub fn b58c_to_address(b58c: String) -> Result<Address, Box<dyn Error>> {
 
 fn salt_from_password(password: &str) -> [u8; 16] {
     let digest = ring::digest::digest(&digest::SHA256, password.as_bytes());
-    let mut out = [0 as u8; 16];
+    let mut out = [0_u8; 16];
     out.copy_from_slice(&digest.as_ref()[0..16]);
 
     out

@@ -58,7 +58,7 @@ impl fmt::Display for ErrorKind {
             ErrorKind::OldBlock => write!(fmt, "{}", self.description()),
             ErrorKind::TooLarge(max_size, actual_size) => write!(fmt, "{}: max size is {}B, block is {}B", self.description(), max_size, actual_size),
             ErrorKind::EmptyBlock => write!(fmt, "{}", self.description()),
-            ErrorKind::TxnError(err, txn) => write!(fmt, "{}: error: {}, txn: {}", self.description(), err.to_string(), hex::encode(txn)),
+            ErrorKind::TxnError(err, txn) => write!(fmt, "{}: error: {}, txn: {}", self.description(), err, hex::encode(txn)),
             ErrorKind::OrphanTxn(txn) => write!(fmt, "{}: txn: {}", self.description(), hex::encode(txn)),
             ErrorKind::InvalidCoinbase => write!(fmt, "{}", self.description()),
             ErrorKind::InvalidCoinbaseAmount(exp, actual) => write!(fmt, "{}: expected: {}, actual: {}", self.description(), exp, actual),

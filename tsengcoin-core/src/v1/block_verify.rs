@@ -30,7 +30,7 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
     }
 
     // The block cannot be empty
-    if block.transactions.len() == 0 {
+    if block.transactions.is_empty() {
         return Err(Box::new(EmptyBlock));
     }
 
@@ -102,7 +102,7 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
 
     // First add the coinbase transaction as an unconfirmed UTXO. This needs to happen before we
     // actually verify the transaction because future transactions may depend on it.
-    state.blockchain.utxo_pool.update_unconfirmed(&coinbase);
+    state.blockchain.utxo_pool.update_unconfirmed(coinbase);
 
     // Verify each transaction separately
     for txn in &block.transactions[1..] {
@@ -204,8 +204,8 @@ pub fn verify_block(block: Block, state: &mut State) -> BlockVerifyResult<bool> 
 
     state.pending_txns = old_pending;
 
-    pending_to_remove.sort();
-    orphans_to_remove.sort();
+    pending_to_remove.sort_unstable();
+    orphans_to_remove.sort_unstable();
 
     for i in (0..pending_to_remove.len()).rev() {
         let pos = pending_to_remove[i];
@@ -254,7 +254,7 @@ fn restore_utxo_pool(state: &mut State, utxo_blocks: &Vec<Block>, old_pending: V
             },
             Err(err) => {
                 // This is weird and shouldn't happen
-                println!("Rejecting a pending transaction that was once valid: {}", err.to_string());
+                println!("Rejecting a pending transaction that was once valid: {}", err);
                 pending_to_remove.push(i);
             },
             Ok(false) => {
@@ -263,7 +263,7 @@ fn restore_utxo_pool(state: &mut State, utxo_blocks: &Vec<Block>, old_pending: V
         }
     }
 
-    pending_to_remove.sort();
+    pending_to_remove.sort_unstable();
 
     for i in (0..pending_to_remove.len()).rev() {
         let pos = pending_to_remove[i];

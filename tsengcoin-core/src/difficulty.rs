@@ -26,7 +26,7 @@ pub fn retarget_difficulty(old: Hash256, last_block: &Block, first_block: &Block
 
     let new_hash_uint = BigUint::from_bytes_be(&old) * adjustment;
     let bytes = new_hash_uint.to_bytes_be();
-    let mut out = [0 as u8; 32];
+    let mut out = [0_u8; 32];
 
     out[(32 - bytes.len())..].copy_from_slice(&bytes);
 

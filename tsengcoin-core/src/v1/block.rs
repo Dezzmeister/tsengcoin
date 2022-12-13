@@ -150,12 +150,12 @@ impl Block {
     /// Gets all transactions in the block, consuming the block in the
     /// process.
     pub fn to_txns(self) -> Vec<Transaction> {
-        return self.transactions;
+        self.transactions
     }
 
     /// Like `to_txns` except it excludes the coinbase transaction.
     pub fn to_network_txns(self) -> Vec<Transaction> {
-        return self.transactions[1..].try_into().unwrap();
+        self.transactions[1..].try_into().unwrap()
     }
 }
 
@@ -177,7 +177,7 @@ impl BlockchainDB {
     /// The index will be 0 if the best chain is the main chain and 1,2,3...n for the nth fork.
     pub fn best_chain(&self) -> (usize, usize, bool) {
         // We can assume that fork chains are always sorted by index, so that the earliest fork chain is first.
-        if self.forks.len() == 0 {
+        if self.forks.is_empty() {
             return (self.blocks.len(), 0, false);
         }
 
@@ -210,7 +210,7 @@ impl BlockchainDB {
 
         // After computing the best fork difficulty, check if the main chain is still more difficult
         if main_diff < *min_fork_diff {
-            (self.blocks.len(), 0, false);
+            return (self.blocks.len(), 0, false);
         }
 
         // Check if the main chain has the same difficulty as a fork and that this is the best difficulty
@@ -228,7 +228,7 @@ impl BlockchainDB {
             return &self.blocks;
         }
 
-        return &self.forks[index].blocks;
+        &self.forks[index].blocks
     }
 
     pub fn top_hash(&self, chain_idx: usize) -> Hash256 {
@@ -427,7 +427,7 @@ impl BlockchainDB {
     }
 
     fn resolve_forks(&mut self) -> Vec<Block> {
-        if self.forks.len() == 0 {
+        if self.forks.is_empty() {
             return vec![];
         }
 
@@ -492,7 +492,7 @@ pub fn check_orphans(state: &mut State) {
                 orphans_to_remove.push(i);
             },
             Err(err) => {
-                println!("Error verifying orphan block: {}", err.to_string());
+                println!("Error verifying orphan block: {}", err);
                 orphans_to_remove.push(i);
             },
             // Block is still an orphan
@@ -514,7 +514,7 @@ pub fn check_orphans(state: &mut State) {
 pub fn resolve_forks(state: &mut State) -> bool {
     let mut fork_blocks = state.blockchain.resolve_forks();
 
-    if fork_blocks.len() == 0 {
+    if fork_blocks.is_empty() {
         return false;
     }
 
@@ -532,7 +532,7 @@ pub fn resolve_forks(state: &mut State) -> bool {
     state.blockchain.utxo_pool = build_utxos_from_confirmed(&state.blockchain.blocks);
     check_pending_and_orphans(state);
 
-    return true;
+    true
 }
 
 pub fn genesis_block() -> Block {
@@ -540,12 +540,12 @@ pub fn genesis_block() -> Block {
     let coinbase = make_coinbase_txn(&genesis_miner, String::from("genesis block"), 0, [0x69; 32]);
 
     let target_bytes = hex::decode("0000000f00000000000000000000000000000000000000000000000000000000").unwrap();
-    let mut target = [0 as u8; 32];
+    let mut target = [0_u8; 32];
     target.copy_from_slice(&target_bytes);
 
     // This nonce will produce the hash "0000000c9785be4989caa7cf9b7dca9161bbe8334f692fbf277fce1e23f9df2a"
     let nonce_bytes = hex::decode("0487ec8e16f44da6d0d17e6e9c2bdc097c1eda445879a7df3d96a06b4acd0aa2").unwrap();
-    let mut nonce = [0 as u8; 32];
+    let mut nonce = [0_u8; 32];
     nonce.copy_from_slice(&nonce_bytes);
 
     let txns = vec![coinbase];
@@ -588,7 +588,7 @@ pub fn hash_block_header(header: &RawBlockHeader) -> Hash256 {
 /// Assumes that the transaction array is not empty. The caller should enforce
 /// this!
 pub fn make_merkle_root(txns: &Vec<Transaction>) -> Hash256 {
-    if txns.len() == 0 {
+    if txns.is_empty() {
         panic!("Transaction array cannot be empty");
     }
 
@@ -609,7 +609,7 @@ pub fn make_merkle_root(txns: &Vec<Transaction>) -> Hash256 {
 }
 
 pub fn make_merkle_root_from_hashes(hashes: Vec<Hash256>) -> Hash256 {
-    let mut out = hashes.clone();
+    let mut out = hashes;
 
     while out.len() > 1 {
         out = merkle_round(out);
@@ -623,13 +623,13 @@ fn merkle_round(hashes: Vec<Hash256>) -> Vec<Hash256> {
         return hashes;
     }
 
-    let mut hashes_in = vec![[0 as u8; 32]; ((hashes.len() + 1) / 2) * 2];
+    let mut hashes_in = vec![[0_u8; 32]; ((hashes.len() + 1) / 2) * 2];
     hashes_in[0..hashes.len()].copy_from_slice(&hashes);
     let num_hashes = hashes_in.len();
 
     // Duplicate the last hash if we have an odd number of transactions
     if hashes.len() % 2 == 1 {
-        hashes_in[num_hashes - 1] = hashes_in[num_hashes - 2].clone();
+        hashes_in[num_hashes - 1] = hashes_in[num_hashes - 2];
     }
 
     let mut out: Vec<Hash256> = vec![];

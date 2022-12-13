@@ -115,7 +115,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
             if miner_names.contains(&miner_name) {
                 Some(miner_name)
             } else {
-                return Err(format!("Miner {} is not recognized/supported", miner_name))?;
+                return Err(format!("Miner {} is not recognized/supported", miner_name).into());
             }
         }
     };
@@ -201,7 +201,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
             if miner_names.contains(&miner_name) {
                 Some(miner_name)
             } else {
-                return Err(format!("Miner {} is not recognized/supported", miner_name))?;
+                return Err(format!("Miner {} is not recognized/supported", miner_name).into());
             }
         }
     };
@@ -458,11 +458,11 @@ fn miner_placeholder(miners: &Vec<String>) -> String {
 
     for miner in miners {
         out.push_str(miner);
-        out.push_str("|");
+        out.push('|');
     }
 
     out.remove(out.len() - 1);
-    out.push_str(")");
+    out.push(')');
     out
 }
 
@@ -470,7 +470,7 @@ fn miner_list(miners: &Vec<String>) -> String {
     let mut out = String::from("");
 
     for miner in miners {
-        out.push_str(" ");
+        out.push(' ');
         out.push_str(&format!("\"{}\",", miner));
     }
 

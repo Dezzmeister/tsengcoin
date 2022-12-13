@@ -38,8 +38,8 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
     let mut raw_header_bytes = bincode::serialize(&raw_block.header).unwrap();
     let (mut schedule, mut hash_vars) = hash_chunks(&raw_header_bytes, 1);
 
-    let mut nonces = vec![0 as u8; num_nonces * 32];
-    let mut hashes = vec![0 as u8; num_nonces * 32];
+    let mut nonces = vec![0_u8; num_nonces * 32];
+    let mut hashes = vec![0_u8; num_nonces * 32];
 
     let mut nonces_gpu = DeviceBuffer::from_slice(&nonces).expect("Failed to create device memory");
     let mut prev_gpu = DeviceBuffer::from_slice(&schedule[0..11]).expect("Failed to create device memory");
@@ -147,7 +147,7 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                         println!("New block is an orphan. Rejecting");
                     },
                     Err(err) => {
-                        println!("Rejecting new block: {}", err.to_string());
+                        println!("Rejecting new block: {}", err);
                     },
                     Ok(false) => {
                         state.network.broadcast_msg(&Request::NewBlock(new_block));
@@ -216,7 +216,7 @@ fn make_raw_block(state_mut: &Mutex<State>) -> RawBlock {
 /// a greedy approach to this problem and take the transactions with the highest fees, but then we would have to ensure that
 /// we don't leave any dependency transactions behind. We chose not to deal with this because the network is small
 /// and there won't be enough transactions to even approach the block size limit.
-fn pick_best_transactions(txns: &Vec<Transaction>, state: &State, coinbase_size: usize) -> (Vec<Transaction>, u64) {
+fn pick_best_transactions(txns: &[Transaction], state: &State, coinbase_size: usize) -> (Vec<Transaction>, u64) {
     let mut out: Vec<Transaction> = vec![];
     let mut size: usize = coinbase_size;
     let mut fees: u64 = 0;

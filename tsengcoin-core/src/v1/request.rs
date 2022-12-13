@@ -88,7 +88,7 @@ pub fn get_first_peers(known_node: SocketAddr, state_mut: &Mutex<State>) -> Resu
 
             Ok(())
         },
-        _ => Err("Known node responded with nonsense")?
+        _ => Err("Known node responded with nonsense".into())
     }
 }
 
@@ -109,7 +109,7 @@ pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), B
             version: PROTOCOL_VERSION,
             addr_you: addr,
             listen_port: state.local_addr_me.port(),
-            best_height: best_height,
+            best_height,
             best_hash: state.blockchain.top_hash(chain_idx)
         });
 
@@ -151,7 +151,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
     let best_node_opt = state.network.most_updated_node();
     let best_node = match best_node_opt {
         None => {
-            return Err("No suitable nodes to update local blockchain")?;
+            return Err("No suitable nodes to update local blockchain".into());
         },
         Some(node) => node
     };
@@ -188,7 +188,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
                                 match verify_result {
                                     Ok(false) => (),
                                     Err(err) => {
-                                        println!("Received a bad block: {}", err.to_string());
+                                        println!("Received a bad block: {}", err);
                                     },
                                     Ok(true) => {
                                         println!("Received an orphan block as part of a blockchain from another peer");
@@ -199,25 +199,25 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
                                 }
                             }
                         } else {
-                            return Err("Received block with bad prev hash")?;
+                            return Err("Received block with bad prev hash".into());
                         }
                         break;
                     },
                     UnknownHash(_) => {
-                        block_idx = block_idx - 1;
+                        block_idx -= 1;
                         hash = state.blockchain.blocks[block_idx - 1].header.hash;
 
                         println!("Received `UnknownHash` while trying to download blockchain");
                     },
-                    DisconnectedChains => return Err("Tried to download blockchain across unconnected forks")?,
-                    BadChainIndex => return Err("Tried to download blockchain with bad chain index")?,
-                    BadHashes => return Err("Tried to download blockchain with bad hashes")?,
+                    DisconnectedChains => return Err("Tried to download blockchain across unconnected forks".into()),
+                    BadChainIndex => return Err("Tried to download blockchain with bad chain index".into()),
+                    BadHashes => return Err("Tried to download blockchain with bad hashes".into()),
                     
                 }
             },
             _ => {
                 // TODO: Remove node and try again
-                return Err("Peer node returned nonsense")?;
+                return Err("Peer node returned nonsense".into());
             }
         }
 

@@ -68,7 +68,7 @@ impl FriendState {
 
     pub fn decrypt_from_sender(&mut self, enc_req: EncryptedChainRequest, sender: Address) -> Result<ChainRequest, Box<dyn Error>> {
         if !self.is_connected(&sender) {
-            return Err(format!("No encrypted connection set up with {}", self.get_name(sender)))?;
+            return Err(format!("No encrypted connection set up with {}", self.get_name(sender)).into());
         }
 
         let keypair = self.keys.get_mut(&sender).unwrap();
@@ -120,7 +120,7 @@ pub fn check_pending_dh(your_pubkey: PublicKey, sender: Address, state: &mut Sta
 /// party yet.
 pub fn make_encrypted_chain_req(req: ChainRequest, dest: Address, state: &mut State) -> Result<Transaction, Box<dyn Error>> {
     let keypair = match state.friends.keys.get_mut(&dest) {
-        None => return Err("Can't send encrypted request before performing Diffie Hellman key exchange")?,
+        None => return Err("Can't send encrypted request before performing Diffie Hellman key exchange".into()),
         Some(key) => key
     };
 
@@ -158,7 +158,7 @@ pub fn make_encrypted_chain_req(req: ChainRequest, dest: Address, state: &mut St
             Ok(full_txn)
         },
         Err(err) => {
-            Err(format!("Error verifying encrypted request transaction: {}", err))?
+            return Err(format!("Error verifying encrypted request transaction: {}", err).into())
         }
     }
 }
@@ -177,7 +177,7 @@ pub fn make_intent_req(dest: Address, state: &mut State) -> Result<Option<Transa
 
             Ok(Some(make_encrypted_chain_req(intent, dest, state)?))
         },
-        None => return Ok(None)
+        None => Ok(None)
     }
 }
 
@@ -255,7 +255,7 @@ pub fn make_dh_response_req(txn: &Transaction, state: &mut State) -> Result<(Tra
             Ok((full_txn, your_address))
         },
         Err(err) => {
-            Err(format!("Error verifying chat request transaction: {}", err))?
+            return Err(format!("Error verifying chat request transaction: {}", err).into())
         }
     }
 }
@@ -301,7 +301,7 @@ pub fn make_dh_connect_req(dest: Address, req_amount: u64, fee: u64, intent: Opt
             Ok(full_txn)
         },
         Err(err) => {
-            Err(format!("Error verifying chat request transaction: {}", err))?
+            return Err(format!("Error verifying chat request transaction: {}", err).into())
         }
     }
 }
@@ -313,7 +313,7 @@ pub fn dh_req_meta(pubkey: PublicKey) -> String {
 }
 
 pub fn decompose_dh_req(txn: &Transaction) -> Option<PublicKey> {
-    let items = txn.meta.split(" ").collect::<Vec<&str>>();
+    let items = txn.meta.split(' ').collect::<Vec<&str>>();
     let pubkey_vec = match hex::decode(&items[1]) {
         Ok(bytes) => bytes,
         Err(_) => return None

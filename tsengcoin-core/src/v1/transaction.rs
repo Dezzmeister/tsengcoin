@@ -187,7 +187,7 @@ impl UTXOPool {
 
             utxo.outputs.remove(output_pos);
 
-            if utxo.outputs.len() == 0 {
+            if utxo.outputs.is_empty() {
                 self.utxos.remove(utxo_pos);
             }
         }
@@ -220,7 +220,7 @@ impl UTXOPool {
 
             utxo.outputs.remove(output_pos);
 
-            if utxo.outputs.len() == 0 {
+            if utxo.outputs.is_empty() {
                 self.utxos.remove(utxo_pos);
             }
         }
@@ -353,10 +353,7 @@ impl std::fmt::Debug for UTXOPool {
 }
 
 fn hex_option(opt: Option<Hash256>) -> Option<String> {
-    match opt {
-        None => None,
-        Some(data) => Some(hex::encode(&data))
-    }
+    opt.map(|data| hex::encode(&data))
 }
 
 /// The size of a coinbase transaction with an empty meta field
@@ -404,7 +401,7 @@ pub fn make_coinbase_txn(winner: &Address, meta: String, fees: u64, extra_nonce:
 
     let output = TxnOutput {
         amount: BLOCK_REWARD + fees,
-        lock_script: make_p2pkh_lock(&winner)
+        lock_script: make_p2pkh_lock(winner)
     };
 
     let mut out = Transaction {
@@ -559,7 +556,7 @@ pub fn hash_txn(txn: &UnhashedTransaction) -> Result<Hash256, Box<dyn Error>> {
     let digest = context.finish();
     let hash = digest.as_ref();
 
-    let mut out = [0 as u8; 32];
+    let mut out = [0_u8; 32];
     out.copy_from_slice(hash);
 
     Ok(out)
@@ -625,7 +622,7 @@ pub fn make_single_p2pkh_txn(dest: Address, amount: u64, fee: u64, state: &State
 
     let change = match collect_enough_change(state, state.address, required_input) {
         None => {
-            return Err("Not enough TsengCoin")?;
+            return Err("Not enough TsengCoin".into());
         },
         Some(utxos) => utxos
     };

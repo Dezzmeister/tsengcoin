@@ -27,12 +27,12 @@ fn hash_test(_invocation: &CommandInvocation, state: Option<&Mutex<State>>) -> R
 
 fn merkle_test(invocation: &CommandInvocation, _state: Option<&Mutex<State>>) -> Result<(), Box<dyn Error>> {
     let raw_hashes_str = invocation.get_field("hashes").unwrap();
-    let raw_hashes = raw_hashes_str.split(" ");
+    let raw_hashes = raw_hashes_str.split(' ');
     let mut hashes: Vec<Hash256> = vec![];
 
     for raw_hash in raw_hashes {
         let bytes = hex::decode(&raw_hash).unwrap();
-        let mut hash = [0 as u8; 32];
+        let mut hash = [0_u8; 32];
         
         hash.copy_from_slice(&bytes);
         hashes.push(hash);

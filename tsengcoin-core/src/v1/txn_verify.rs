@@ -28,12 +28,12 @@ pub fn verify_transaction(tx: Transaction, state: &State) -> TxnVerifyResult<boo
     let utxos = &state.blockchain.utxo_pool;
 
     // Transaction must have at least 1 input
-    if tx.inputs.len() == 0 {
+    if tx.inputs.is_empty() {
         return Err(Box::new(EmptyInputs));
     }
 
     // Transaction must have at least 1 output
-    if tx.outputs.len() == 0 {
+    if tx.outputs.is_empty() {
         return Err(Box::new(EmptyOutputs));
     }
 
@@ -211,7 +211,7 @@ pub fn check_pending_and_orphans(state: &mut State) {
                 new_orphans.push(txn.clone());
             },
             Err(err) => {
-                println!("Pending/orphan transaction rejected due to error: {}", err.to_string());
+                println!("Pending/orphan transaction rejected due to error: {}", err);
             },
             Ok(false) => {
                 state.blockchain.utxo_pool.update_unconfirmed(txn);

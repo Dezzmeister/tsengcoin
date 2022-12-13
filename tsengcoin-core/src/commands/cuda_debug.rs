@@ -23,15 +23,15 @@ fn cuda_hash_test(_invocation: &CommandInvocation, _state: Option<()>) -> Result
 
     let (schedule, hash_vars) = hash_chunks(&bytes, 1);
 
-    let nonce_mem = genesis.header.nonce.clone();
-    let hash_mem = vec![0 as u8; 32];
+    let nonce_mem = genesis.header.nonce;
+    let hash_mem = vec![0_u8; 32];
 
     let nonce_gpu = DeviceBuffer::from_slice(&nonce_mem).expect("Failed to create device memory for nonce");
     let prev_gpu = DeviceBuffer::from_slice(&schedule[0..11]).expect("Failed to create device memory for partial schedule");
     let hash_vars_gpu = DeviceBuffer::from_slice(&hash_vars).expect("Failed to create device memory for hash vars");
     let hashes_gpu = DeviceBuffer::from_slice(hash_mem.as_slice()).expect("Failed to create device memory for hash");
 
-    let mut hashes_out = vec![0 as u8; 32];
+    let mut hashes_out = vec![0_u8; 32];
 
     unsafe {
         launch!(

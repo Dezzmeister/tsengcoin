@@ -44,7 +44,7 @@ pub struct NonceGen {
 
 impl NonceGen {
     fn new(start: [u8; 12]) -> Self {
-        let mut nonce_bytes = [0 as u8; 16];
+        let mut nonce_bytes = [0_u8; 16];
         nonce_bytes[4..].copy_from_slice(&start);
 
         let start: u128 = u128::from_be_bytes(nonce_bytes);
@@ -121,7 +121,7 @@ pub fn b58c_to_req(b58c: &str) -> Result<EncryptedChainRequest, Box<dyn Error>> 
     let (version, bytes) = b58c.from_base58check().map_err(|_| "Invalid base58check")?;
 
     if version != B58C_VERSION_PREFIX {
-        return Err("Invalid base58check version")?;
+        return Err("Invalid base58check version".into());
     }
 
     let enc_req: EncryptedChainRequest = bincode::deserialize(&bytes)?;
@@ -145,9 +145,9 @@ pub fn is_enc_req(txn: &Transaction) -> bool {
 }
 
 pub fn decompose_enc_req(txn: &Transaction) -> Option<EncryptedChainRequest> {
-    let items = txn.meta.split(" ").collect::<Vec<&str>>();
+    let items = txn.meta.split(' ').collect::<Vec<&str>>();
 
-    match b58c_to_req(&items[1]) {
+    match b58c_to_req(items[1]) {
         Ok(req) => Some(req),
         Err(_) => None
     }
@@ -232,7 +232,7 @@ fn handle_chain_chat(req: ChainChatReq, sender: Address, state: &mut State, stat
                     chat_box
                 })?;
 
-                session.window = Some(window.clone());
+                session.window = Some(window);
             }
 
             let state_arc_clone = Arc::clone(state_arc);

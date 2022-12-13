@@ -60,7 +60,7 @@ fn make_operator_name_map() -> HashMap<String, OperatorFn> {
 }
 
 fn split(input: &String) -> Vec<String> {
-    input.split(" ").map(|s| s.to_owned()).collect()
+    input.split(' ').map(|s| s.to_owned()).collect()
 }
 
 fn tokenize(raw_tokens: &Vec<String>) -> ScriptResult<Vec<Token>> {
@@ -221,7 +221,7 @@ fn op_require_equal(stack: &mut Vec<Token>) -> ScriptResult<()> {
 }
 
 fn op_dup(stack: &mut Vec<Token>) -> ScriptResult<()> {
-    if stack.len() < 1 {
+    if stack.is_empty() {
         return Err(Box::new(ScriptStackUnderflow))
     }
 
@@ -234,7 +234,7 @@ fn op_dup(stack: &mut Vec<Token>) -> ScriptResult<()> {
 }
 
 fn op_hash160(stack: &mut Vec<Token>) -> ScriptResult<()> {
-    if stack.len() < 1 {
+    if stack.is_empty() {
         return Err(Box::new(ScriptStackUnderflow))
     }
 

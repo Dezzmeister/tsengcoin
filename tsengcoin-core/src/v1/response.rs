@@ -145,26 +145,26 @@ fn handle_get_blocks(data: GetBlocksReq, socket: &TcpStream, state_mut: &Mutex<S
     };
 
     if my_hash_chain != your_hash_chain && my_hash_chain != 0 {
-        send_res(Response::GetBlocks(GetBlocksRes::DisconnectedChains), &socket)?;
+        send_res(Response::GetBlocks(GetBlocksRes::DisconnectedChains), socket)?;
 
         return Ok(());
     }
 
     if your_hash_chain != 0 && (your_hash_chain - 1) > state.blockchain.forks.len() {
-        send_res(Response::GetBlocks(GetBlocksRes::BadChainIndex), &socket)?;
+        send_res(Response::GetBlocks(GetBlocksRes::BadChainIndex), socket)?;
 
         return Ok(());
     }
 
     if your_hash_pos <= my_hash_pos  {
-        send_res(Response::GetBlocks(GetBlocksRes::BadHashes), &socket)?;
+        send_res(Response::GetBlocks(GetBlocksRes::BadHashes), socket)?;
 
         return Ok(());
     }
 
     let blocks = state.blockchain.get_blocks(my_hash_chain, my_hash_pos + 1, your_hash_pos + 1);
 
-    send_res(Response::GetBlocks(GetBlocksRes::Blocks(blocks)), &socket)?;
+    send_res(Response::GetBlocks(GetBlocksRes::Blocks(blocks)), socket)?;
 
     Ok(())
 }
@@ -208,7 +208,7 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
             },
         };
 
-        handle_chain_request(chain_req, sender, state, &state_arc)?;
+        handle_chain_request(chain_req, sender, state, state_arc)?;
     }
 
     // Someone wants to chat with us; they initiated a Diffie-Hellman key exchange with
@@ -222,7 +222,7 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
         let should_respond_dh = match check_pending_dh(sender_pubkey, sender, state) {
             Ok(val) => val,
             Err(err) => {
-                return Err(format!("Error handling Diffie-Hellman request: {}", err))?;
+                return Err(format!("Error handling Diffie-Hellman request: {}", err).into());
             }
         };
 
@@ -284,7 +284,7 @@ pub fn handle_new_block(data: Block, _socket: &TcpStream, state_mut: &Mutex<Stat
 
     match verify_result {
         Err(err) => {
-            println!("Error verifying block: {}", err.to_string());
+            println!("Error verifying block: {}", err);
             return Ok(());
         },
         Ok(true) => {

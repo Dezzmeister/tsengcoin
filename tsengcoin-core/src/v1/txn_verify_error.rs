@@ -64,7 +64,7 @@ impl fmt::Display for ErrorKind {
             ErrorKind::OutOfRange(val) => write!(fmt, "{}. Max is {} TsengCoin, received {}", self.description(), MAX_TXN_AMOUNT, val),
             ErrorKind::Coinbase => write!(fmt, "{}", self.description()),
             ErrorKind::InvalidUTXOIndex => write!(fmt, "{}", self.description()),
-            ErrorKind::Script(err) => write!(fmt, "{}: {}", self.description(), err.to_string()),
+            ErrorKind::Script(err) => write!(fmt, "{}: {}", self.description(), err),
             ErrorKind::BadUnlockScript(hash, output_idx) => write!(fmt, "{}: input transaction {}, output {}", self.description(), hex::encode(hash), output_idx),
             ErrorKind::Overspend(input_amt, output_amt) => write!(fmt, "{}: tried to spend {} when only {} provided as input", self.description(), output_amt, input_amt),
             ErrorKind::LowFee(fee) => write!(fmt, "{}: Tried to spend fee of {}, minimum fee is {}", self.description(), fee, MIN_TXN_FEE),

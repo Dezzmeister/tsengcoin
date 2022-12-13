@@ -28,10 +28,7 @@ pub struct Node {
 
 impl std::fmt::Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let hash_debug = match self.best_hash {
-            None => None,
-            Some(hash) => Some(hex::encode(hash))
-        };
+        let hash_debug = self.best_hash.map(hex::encode);
 
         f.debug_struct("Node")
             .field("version", &self.version)
@@ -241,13 +238,13 @@ impl Network {
     pub fn has_peer<T: PartialEq>(&self, item: T) -> bool
         where Node: PartialEq<T>
     {
-        self.peers.iter().find(|n| **n == item).is_some()
+        self.peers.iter().any(|n| *n == item)
     }
 
     pub fn has_known<T: PartialEq>(&self, item: T) -> bool
         where DistantNode: PartialEq<T>
     {
-        self.known_nodes.iter().find(|n| **n == item).is_some()
+        self.known_nodes.iter().any(|n| *n == item)
     }
 
     /// Get the node with the best block height. Returns None if there are no nodes

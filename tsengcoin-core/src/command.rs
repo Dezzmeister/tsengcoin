@@ -145,7 +145,7 @@ impl Condition {
 }
 
 pub fn dispatch_command<T>(args: &Vec<String>, map: &CommandMap<T>, state: Option<T>) {
-    if args.len() < 1 {
+    if args.is_empty() {
         println!("Missing command");
         return;
     }
@@ -203,7 +203,7 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>, poss
             .partition(|s| s.contains('='));
 
     for assignment in assignment_strs {
-        let pair: Vec<&str> = assignment.split("=").collect();
+        let pair: Vec<&str> = assignment.split('=').collect();
         let key = pair[0].to_owned();
         let value = pair[1].to_owned();
 
@@ -233,7 +233,7 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>, poss
 
         match (field_type, var_field) {
             (FieldType::Var, Some(var)) => drop(fields.insert(name.to_owned(), var)),
-            (FieldType::Var, None) => return Err(format!("Missing expected argument {name}. Pass this in with --{name}=<value>"))?,
+            (FieldType::Var, None) => return Err(format!("Missing expected argument {name}. Pass this in with --{name}=<value>").into()),
             (FieldType::Pos(_) | FieldType::Spaces(_), Some(var)) => drop(fields.insert(name.to_owned(), var)),
             (FieldType::Pos(_), None) => pos_fields.push(Field::new(name, FieldType::Pos(pos_fields.len()), desc)),
             (FieldType::Spaces(_), None) => pos_fields.push(Field::new(name, FieldType::Spaces(pos_fields.len()), desc))
@@ -244,9 +244,9 @@ fn decompose_raw_args(raw_args: &Vec<String>, expected_fields: &Vec<Field>, poss
     for Field {name, field_type, ..} in pos_fields {
         match field_type {
             FieldType::Var => unreachable!(),
-            FieldType::Pos(pos) if pos.to_owned() < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()].clone())),
-            FieldType::Spaces(pos) if pos.to_owned() < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()..].join(" "))),
-            _ => return Err(format!("Not enough arguments: missing expected argument {name}"))?,
+            FieldType::Pos(pos) if pos < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()].clone())),
+            FieldType::Spaces(pos) if pos < ordered_args.len() => drop(fields.insert(name.to_owned(), ordered_args[pos.to_owned()..].join(" "))),
+            _ => return Err(format!("Not enough arguments: missing expected argument {name}").into()),
         };
     }
 
@@ -283,7 +283,7 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
     };
 
     println!("{}\n", command.desc);
-    println!("Syntax: \t{}", make_syntax_string(&cmd_name, &command));
+    println!("Syntax: \t{}", make_syntax_string(&cmd_name, command));
 
     let (vars, mut poses): (Vec<&Field>, Vec<&Field>) = 
         command.expected_fields
@@ -299,8 +299,7 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
     });
 
     let cond_fields = poses.iter()
-        .filter(|f| f.condition.is_some())
-        .map(|f| *f)
+        .filter(|f| f.condition.is_some()).copied()
         .collect::<Vec<&Field>>();
     
     let mut var_names: Vec<(String, String)> = 
@@ -314,7 +313,7 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
     let mut flags = command.flags.clone();
     flags.sort_by_key(|f| f.name.clone());
 
-    if poses.len() > 0 {
+    if !poses.is_empty() {
         println!("\nRequired arguments:\n");
 
         for field in poses {
@@ -324,7 +323,7 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
         println!("\nThere are no required positional arguments");
     }
 
-    if var_names.len() > 0 {
+    if !var_names.is_empty() {
         println!("\nRequired keyword arguments:\n");
 
         for (name, desc) in var_names {
@@ -332,7 +331,7 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
         }
     }
 
-    if flags.len() > 0 {
+    if !flags.is_empty() {
         println!("\nOptional flags:\n");
 
         for Flag { name, desc } in flags {
@@ -345,7 +344,7 @@ fn help_cmd<T>(map: &CommandMap<T>, cmd_name: String) {
         }
     }
 
-    if command.optionals.len() > 0 {
+    if !command.optionals.is_empty() {
         println!("\nOptional arguments:\n");
 
         for VarField { name, desc, .. } in &command.optionals {
@@ -372,7 +371,7 @@ fn make_syntax_string<T>(name: &String, command: &Command<T>) -> String {
             Some(placeholder) => placeholder.clone()
         };
 
-        out.push_str(" ");
+        out.push(' ');
         out.push_str(&format!("[--{}={}]", field.name, placeholder));
     }
 
@@ -395,7 +394,7 @@ fn make_syntax_string<T>(name: &String, command: &Command<T>) -> String {
     }
 
     for name in names {
-        out.push_str(" ");
+        out.push(' ');
         out.push_str(&name);
     }
 
