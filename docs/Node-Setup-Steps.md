@@ -28,7 +28,7 @@ https://github.com/Dezzmeister/tsengcoin.git
 sudo chown -R <user> tsengcoin/
 ```
 
-`cd` into the main crate and make a headless release build:
+`cd` into the main crate (`tsengcoin-core`) and make a headless release build:
 
 ```sh
 cd tsengcoin/tsengcoin-core
@@ -47,4 +47,6 @@ Optionally you can just use one of the configured builds:
 cargo build-headless-cl
 ```
 
-See [config.toml](../tsengcoin-core/.cargo/config.toml) for more build options. Because our test net nodes are running in a server environment without a desktop, they are missing many of the graphical libraries needed to link the GUI application, and they can only run the core client in headless mode.
+_See [config.toml](../tsengcoin-core/.cargo/config.toml) for more build options. Because our test net nodes are running in a server environment without a desktop, they are missing many of the graphical libraries needed to link the GUI application, and they can only run the core client in headless mode._
+
+The release binary will be in `tsengcoin-core/target/release`.

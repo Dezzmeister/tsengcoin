@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     error::Error,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     sync::{Arc, Mutex},
     thread,
 };
@@ -137,6 +137,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
         .unwrap()
         .parse::<u16>()
         .unwrap();
+    let listen_ip = invocation.get_optional("ip").unwrap_or(String::from("127.0.0.1")).parse::<IpAddr>().unwrap();
     let listen_port = invocation
         .get_field("listen-port")
         .unwrap()
@@ -167,7 +168,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     println!("Loaded wallet for address {}", b58c_address);
 
     let seed_addr = SocketAddr::new(seed_ip, seed_port);
-    let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
+    let addr_me = SocketAddr::new(listen_ip, listen_port);
 
     println!(
         "Connecting to node at {} and starting bootstrap process",
@@ -271,6 +272,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 }
 
 fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box<dyn Error>> {
+    let listen_ip = invocation.get_optional("ip").unwrap_or(String::from("127.0.0.1")).parse::<IpAddr>().unwrap();
     let listen_port = invocation
         .get_field("listen-port")
         .unwrap()
@@ -300,7 +302,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
 
     println!("Loaded wallet for address {}", b58c_address);
 
-    let addr_me = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), listen_port);
+    let addr_me = SocketAddr::new(listen_ip, listen_port);
 
     #[cfg(feature = "gui")]
     let (state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender) = {
@@ -346,7 +348,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
 
     println!("Skipping bootstrapping, because `start-seed` was used instead of `connect`. Run `connect` if you wish to connect to an existing TsengCoin network");
 
-    println!("Starting network listener thread");
+    println!("Starting network listener thread. Listening on {}", addr_me);
     thread::Builder::new()
         .name(String::from("network-listener"))
         .spawn(move || {
@@ -489,12 +491,19 @@ pub fn make_command_map() -> CommandMap<()> {
             "Set this flag to start the GUI application as well. You can still use TsengCoin from the console, but some GUI-only features will also be available."
         )
     ];
-    let mut connect_optionals = vec![];
+    let mut connect_optionals = vec![
+        VarField::new(
+            "ip",
+            "Your IP address. Use this to specify a different IP to listen on."
+        )
+    ];
     if num_miners == 1 {
-        connect_flags.append(&mut vec![Flag::new(
-            "with-miner",
-            "Set this flag if you want to mine TsengCoin in the background",
-        )]);
+        connect_flags.append(&mut vec![
+            Flag::new(
+                "with-miner",
+                "Set this flag if you want to mine TsengCoin in the background",
+            )
+        ]);
     } else if num_miners > 1 {
         let miners = miners();
         let placeholder = miner_placeholder(&miners);
@@ -550,6 +559,7 @@ pub fn make_command_map() -> CommandMap<()> {
         optionals: connect_optionals.clone(),
         desc: String::from("Connect to the TsengCoin network as a full node. Unless you're trying to do fancy stuff, this is probably the command you want. If you don't have a wallet yet, run `create-address` first.")
     };
+
     let start_seed_cmd: Command<()> = Command {
         processor: start_seed,
         expected_fields: vec![
