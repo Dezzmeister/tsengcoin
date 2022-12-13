@@ -12,7 +12,7 @@ cuda_miner = ["cust"]
 cuda_miner_kernel = ["cuda_builder", "nvvm", "rustc_codegen_nvvm"]
 # Enable this flag to build the core client with debug features
 debug = []
-
+# Set this to build the nearly-headless and graphical modes
 gui = ["fltk", "fltk-sys"]
 
 [dependencies]

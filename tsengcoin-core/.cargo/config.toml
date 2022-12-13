@@ -1,0 +1,29 @@
+[alias]
+# Headless debug mode with no miner
+run-headless-dev = "run --features debug,cl_miner"
+# Graphical debug mode with OpenCL miner
+run-dev = "run --features debug,cl_miner,gui"
+# Graphical debug mode with OpenCL miner and CUDA miner
+run-dev-cuda = "run --features debug,cl_miner,cuda_miner,gui"
+
+# Release builds
+
+# Headless with no miners
+build-headless = "build --release"
+# Headless with OpenCL miner
+build-headless-cl = "build --release --features cl_miner"
+# Headless with OpenCL miner and CUDA miner
+build-headless-cuda = "build --release --features cl_miner,cuda_miner"
+# Headless build with OpenCL miner and CUDA miner built from scratch. Unless you're changing
+# the CUDA kernel, you only need to run the full build once. Subsequent changes to
+# the core client can be build with `build-headless-cuda`
+build-headless-full = "build --release --features cl_miner,cuda_miner,cuda_miner_kernel"
+
+# GUI with OpenCL miner
+build-gui-cl = "build --release --features cl_miner,gui"
+# GUI with OpenCL miner and CUDA miner
+build-gui-cuda = "build --release --features cl_miner,cuda_miner,gui"
+# GUI with OpenCL miner and CUDA miner build from scratch. Unless you're changing
+# the CUDA kernel, you only need to run the full build once. Subsequent changes to
+# the core client can be build with `build-gui-cuda`
+build-gui-full = "build --release --features cl_miner,cuda_miner,cuda_miner_kernel,gui"
