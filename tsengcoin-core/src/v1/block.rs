@@ -223,7 +223,7 @@ impl BlockchainDB {
         (self.forks[min_index].blocks.len() + self.forks[min_index].prev_index, min_index + 1, false)
     }
 
-    pub fn get_chain<'a>(&'a self, index: usize) -> &'a Vec<Block> {
+    pub fn get_chain(&'_ self, index: usize) -> &'_ Vec<Block> {
         if index == 0 {
             return &self.blocks;
         }
@@ -238,7 +238,7 @@ impl BlockchainDB {
     /// Returns the block, the chain index, and the block's position in the chain.
     /// Returns none if the block does not exist anywhere in the blockchain.
     /// Searches the blockchain in reverse because we're usually going to be looking for recent blocks.
-    pub fn get_block<'a>(&'a self, hash: Hash256) -> Option<(&'a Block, usize, usize)> {
+    pub fn get_block(&'_ self, hash: Hash256) -> Option<(&'_ Block, usize, usize)> {
         for i in (0..self.blocks.len()).rev() {
             let block = &self.blocks[i];
             if block.header.hash == hash {
@@ -260,7 +260,7 @@ impl BlockchainDB {
         None
     }
 
-    pub fn get_block_mut<'a>(&'a mut self, hash: Hash256) -> Option<(&'a Block, usize, usize)> {
+    pub fn get_block_mut(&'_ mut self, hash: Hash256) -> Option<(&'_ Block, usize, usize)> {
         for i in (0..self.blocks.len()).rev() {
             let block = &self.blocks[i];
             if block.header.hash == hash {
@@ -354,15 +354,15 @@ impl BlockchainDB {
     /// Finds the given transaction in the entire blockchain. Returns the block containing the
     /// transaction, the chain index of the block, the transaction, and the number of confirmations of
     /// the transaction (if found).
-    pub fn find_txn<'a>(&'a self, hash: Hash256) -> Option<ConfirmedTransaction> {
+    pub fn find_txn(&'_ self, hash: Hash256) -> Option<ConfirmedTransaction> {
         for i in (0..self.blocks.len()).rev() {
             let block = &self.blocks[i];
             let txn_opt = block.get_txn(hash);
 
-            if txn_opt.is_some() {
+            if let Some(txn) = txn_opt {
                 return Some(ConfirmedTransaction {
                     block: block.header.hash,
-                    txn: txn_opt.unwrap(),
+                    txn,
                     chain_idx: 0,
                     confirmations: self.blocks.len() - i,
                 });
@@ -372,15 +372,14 @@ impl BlockchainDB {
         for chain_idx in 0..self.forks.len() {
             let fork_blocks = &self.forks[chain_idx].blocks;
 
-            for i in 0..fork_blocks.len() {
-                let block = &fork_blocks[i];
+            for (i, block) in fork_blocks.iter().enumerate() {
                 let txn_opt = block.get_txn(hash);
                 let confirmations = self.forks[chain_idx].prev_index + i;
 
-                if txn_opt.is_some() {
+                if let Some(txn) = txn_opt {
                     return Some(ConfirmedTransaction {
                         block: block.header.hash,
-                        txn: txn_opt.unwrap(),
+                        txn,
                         chain_idx,
                         confirmations,
                     });
@@ -587,7 +586,7 @@ pub fn hash_block_header(header: &RawBlockHeader) -> Hash256 {
 
 /// Assumes that the transaction array is not empty. The caller should enforce
 /// this!
-pub fn make_merkle_root(txns: &Vec<Transaction>) -> Hash256 {
+pub fn make_merkle_root(txns: &[Transaction]) -> Hash256 {
     if txns.is_empty() {
         panic!("Transaction array cannot be empty");
     }

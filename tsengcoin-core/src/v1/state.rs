@@ -35,7 +35,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new<'a>(addr_me: SocketAddr, keypair: EcdsaKeyPair, gui_req_sender: Sender<GUIRequest>, gui: Option<GUIState>, miner: Option<String>) -> (Self, Receiver<MinerMessage>) {
+    pub fn new(addr_me: SocketAddr, keypair: EcdsaKeyPair, gui_req_sender: Sender<GUIRequest>, gui: Option<GUIState>, miner: Option<String>) -> (Self, Receiver<MinerMessage>) {
         let address = address_from_public_key(&keypair.public_key().as_ref().to_vec());
         let blockchain = load_blockchain_db();
         let (miner_sender, miner_receiver) = channel();
@@ -98,13 +98,15 @@ impl State {
 
     pub fn get_pending_or_confirmed_txn(&self, txn: Hash256) -> Option<Transaction> {
         let pending = self.pending_txns.iter().find(|t| **t == txn);
-        if pending.is_some() {
-            return Some(pending.unwrap().clone());
+
+        if let Some(pending_txn) = pending {
+            return Some(pending_txn.clone());
         }
 
         let block_txn_opt = self.blockchain.find_txn(txn);
-        if block_txn_opt.is_some() {
-            return Some(block_txn_opt.unwrap().txn);
+        
+        if let Some(block_txn) = block_txn_opt {
+            return Some(block_txn.txn);
         }
 
         None

@@ -118,15 +118,13 @@ impl Network {
     pub fn remove<T: PartialEq>(&mut self, node: T) 
         where Node: PartialEq<T>, DistantNode: PartialEq<T>
     {
-        match self.peers.iter().position(|n| *n == node) {
-            Some(pos) => drop(self.peers.remove(pos)),
-            None => ()
-        };
+        if let Some(pos) = self.peers.iter().position(|n| *n == node) {
+            drop(self.peers.remove(pos));
+        }
 
-        match self.known_nodes.iter().position(|n| *n == node) {
-            Some(pos) => drop(self.known_nodes.remove(pos)),
-            None => ()
-        };
+        if let Some(pos) = self.known_nodes.iter().position(|n| *n == node) {
+            drop(self.known_nodes.remove(pos));
+        }
     }
 
     pub fn clean<T: PartialEq>(&mut self, me: T)
@@ -256,9 +254,11 @@ impl Network {
         for node in &self.peers {
             let best_height_opt = node.best_height;
 
-            if best_height_opt.is_some() && best_height_opt.unwrap() > best_height {
-                best_height = best_height_opt.unwrap();
-                best_node = Some(node);
+            if let Some(node_best_height) = best_height_opt {
+                if node_best_height > best_height {
+                    best_height = node_best_height;
+                    best_node = Some(node);
+                }
             }
         }
 

@@ -248,7 +248,6 @@ pub fn handle_new_txn(data: Transaction, _socket: &TcpStream, gui_req_channel: &
 
         // Release the mutex while we wait for a response from the main thread so that we don't hold
         // up the rest of the program
-        drop(state);
         drop(guard);
 
         let accept_request = is_connection_accepted(sender_name.clone(), gui_req_channel, gui_res_channel, has_gui)?;

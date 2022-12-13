@@ -159,7 +159,7 @@ impl Script {
 }
 
 impl UTXOPool {
-    pub fn find_txn_index<'a, T: PartialEq>(&'a self, txn: T) -> Option<&'a TransactionIndex> 
+    pub fn find_txn_index<T: PartialEq>(&'_ self, txn: T) -> Option<&'_ TransactionIndex> 
         where Hash256: PartialEq<T>
     {
         self.utxos.iter().find(|t| t.txn == txn)
@@ -528,8 +528,7 @@ pub fn collect_enough_change(state: &State, addr: Address, threshold: u64) -> Op
     let mut amount = 0;
     let mut out: Vec<UTXOWindow> = vec![];
 
-    for i in 0..my_utxos.len() {
-        let utxo = &my_utxos[i];
+    for utxo in &my_utxos {
         amount += utxo.amount;
         out.push(utxo.clone());
 
@@ -569,7 +568,7 @@ pub fn hash_txn(txn: &UnhashedTransaction) -> Result<Hash256, Box<dyn Error>> {
 /// If the blockchain were to grow though we wouldn't want to be rebuilding the entire
 /// UTXO pool from the first block every time we try to add a new block. We would need
 /// a better data structure that allows us to undo the latest changes to the UTXO pool.
-pub fn build_utxos_from_confirmed(blocks: &Vec<Block>) -> UTXOPool {
+pub fn build_utxos_from_confirmed(blocks: &[Block]) -> UTXOPool {
     let mut pool = UTXOPool {
         utxos: vec![
             TransactionIndex {
