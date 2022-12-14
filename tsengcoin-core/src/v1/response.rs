@@ -76,7 +76,10 @@ fn handle_get_addr(
     socket: &TcpStream,
     state_mut: &Mutex<State>,
 ) -> Result<(), Box<dyn Error>> {
-    let peer_remote_addr = socket.peer_addr().unwrap().ip();
+    let peer_remote_addr = match socket.peer_addr() {
+        Ok(addr) => addr.ip(),
+        Err(err) => return Err(format!("Failed to get peer address: {}", err).into())
+    };
     let peer_remote_port = data.listen_port;
     let addr_you = SocketAddr::new(peer_remote_addr, peer_remote_port);
 
