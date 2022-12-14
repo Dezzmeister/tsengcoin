@@ -8,7 +8,7 @@ type Second = u64;
 /// How often a block should be found (5 minutes)
 pub const TARGET_BLOCK_INTERVAL: Second = 300;
 /// After how many blocks should the difficulty be recalculated
-pub const NUM_BLOCKS_RETARGET: usize = 100;
+pub const NUM_BLOCKS_RETARGET: usize = 50;
 
 pub const RETARGET_INTERVAL: u64 = (NUM_BLOCKS_RETARGET as u64) * TARGET_BLOCK_INTERVAL;
 

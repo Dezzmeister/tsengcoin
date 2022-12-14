@@ -204,6 +204,7 @@ impl Network {
         best_height: usize,
         best_hash: Hash256,
     ) {
+        self.merge(addr_me);
         // Move the known nodes around then take the first nodes from 0 to `num_peers`. These will be our
         // prospective peers - we'll send GetAddrs and handle the results accordingly.
         self.shuffle();
@@ -300,6 +301,16 @@ impl Network {
         }
 
         best_node
+    }
+
+    fn merge(&mut self, addr_me: SocketAddr) {
+        for node in &self.peers {
+            self.known_nodes.push(DistantNode {
+                addr: node.addr
+            });
+        }
+
+        self.clean(addr_me);
     }
 }
 
