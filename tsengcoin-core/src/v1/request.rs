@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     net::{SocketAddr, TcpStream},
-    sync::Mutex,
+    cmp::min,
 };
 
 use chrono::Utc;
@@ -14,7 +14,7 @@ use crate::{
 
 use super::{
     block::Block,
-    net::{Node, PROTOCOL_VERSION},
+    net::{Node, PROTOCOL_VERSION, MAX_NEIGHBORS},
     response::{
         GetBlocksRes::{BadChainIndex, BadHashes, Blocks, DisconnectedChains, UnknownHash},
         Response,
@@ -56,11 +56,8 @@ pub struct GetBlocksReq {
 
 pub fn get_first_peers(
     known_node: SocketAddr,
-    state_mut: &Mutex<State>,
+    state: &mut State,
 ) -> Result<(), Box<dyn Error>> {
-    let mut guard = state_mut.lock().unwrap();
-    let state = &mut *guard;
-
     let (best_height, chain_idx, _) = state.blockchain.best_chain();
 
     let req = Request::GetAddr(GetAddrReq {
@@ -106,10 +103,7 @@ pub fn get_first_peers(
     }
 }
 
-pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
-    let mut guard = state_mut.lock().unwrap();
-    let state = &mut *guard;
-
+pub fn discover(seed_addr: SocketAddr, state: &mut State) -> Result<(), Box<dyn Error>> {
     let addrs: Vec<SocketAddr> = state
         .network
         .peers
@@ -155,20 +149,14 @@ pub fn discover(seed_addr: SocketAddr, state_mut: &Mutex<State>) -> Result<(), B
     let addr_me = state.remote_addr_me.unwrap();
 
     state.network.clean(addr_me);
-    state.network.find_new_friends(
-        state.port(),
-        addr_me,
-        best_height,
-        state.blockchain.top_hash(chain_idx),
-    );
+    state.network.shuffle();
+    let num_peers = min(state.network.known_nodes.len(), MAX_NEIGHBORS);
+    state.network.peers = state.network.peers[0..num_peers].to_vec();
 
     Ok(())
 }
 
-pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
-    let mut guard = state_mut.lock().unwrap();
-    let state = &mut *guard;
-
+pub fn download_latest_blocks(state: &mut State) -> Result<(), Box<dyn Error>> {
     let best_node_opt = state.network.most_updated_node();
     let best_node = match best_node_opt {
         None => {
@@ -253,9 +241,7 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
     Ok(())
 }
 
-pub fn advertise_self(state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
-    let mut guard = state_mut.lock().unwrap();
-    let state = &mut *guard;
+pub fn advertise_self(state: &mut State) -> Result<(), Box<dyn Error>> {
     let addr_me = state.remote_addr_me.unwrap();
 
     let req = Request::Advertise(AdvertiseReq { addr_me });

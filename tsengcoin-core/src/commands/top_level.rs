@@ -176,7 +176,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     );
 
     #[cfg(feature = "gui")]
-    let (state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender) = {
+    let (mut state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender) = {
         let with_gui = invocation.get_flag("gui");
         let gui_state = match with_gui {
             false => None,
@@ -202,7 +202,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     };
 
     #[cfg(not(feature = "gui"))]
-    let (state, miner_receiver, gui_channels) = {
+    let (mut state, miner_receiver, gui_channels) = {
         let (state, miner_receiver) = State::new(
             addr_me,
             keypair,
@@ -212,15 +212,14 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
         (state, miner_receiver, GUIChannels {})
     };
 
+    get_first_peers(seed_addr, &mut state)?;
+    discover(seed_addr, &mut state)?;
+    download_latest_blocks(&mut state)?;
+    advertise_self(&mut state).expect("Failed to advertise self to network");
+
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
-    let state_arc_3 = Arc::clone(&state_arc);
-
-    get_first_peers(seed_addr, &state_arc)?;
-    discover(seed_addr, &state_arc)?;
-    download_latest_blocks(&state_arc)?;
-    advertise_self(&state_arc_2).expect("Failed to advertise self to network");
 
     println!("Starting network listener thread");
     thread::Builder::new()
@@ -247,6 +246,8 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 
     #[cfg(feature = "gui")]
     {
+        let state_arc_3 = Arc::clone(&state_arc);
+
         thread::Builder::new()
             .name(String::from("command"))
             .spawn(move || {
@@ -265,7 +266,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     #[cfg(not(feature = "gui"))]
     {
         println!("Type a command, or 'help' for a list of commands");
-        listen_for_commands(&state_arc_3);
+        listen_for_commands(&state_arc);
     }
 
     Ok(())
@@ -344,7 +345,6 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
-    let state_arc_3 = Arc::clone(&state_arc);
 
     println!("Skipping bootstrapping, because `start-seed` was used instead of `connect`. Run `connect` if you wish to connect to an existing TsengCoin network");
 
@@ -371,6 +371,8 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
 
     #[cfg(feature = "gui")]
     {
+        let state_arc_3 = Arc::clone(&state_arc);
+
         thread::Builder::new()
             .name(String::from("command"))
             .spawn(move || {
@@ -389,7 +391,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     #[cfg(not(feature = "gui"))]
     {
         println!("Type a command, or 'help' for a list of commands");
-        listen_for_commands(&state_arc_3);
+        listen_for_commands(&state_arc);
     }
 
     Ok(())
