@@ -88,7 +88,7 @@ impl ChatBoxUI {
                 }
             };
 
-            match send_new_txn(enc_req, &state) {
+            match send_new_txn(enc_req, &mut state) {
                 Ok(_) => (),
                 Err(err) => {
                     println!("Error sending chain request: {}", err);

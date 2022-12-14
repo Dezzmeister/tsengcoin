@@ -183,8 +183,8 @@ fn send_coins_p2pkh(
         .unwrap();
     let fee = invocation.get_field("fee").unwrap().parse::<u64>().unwrap();
     let show_structure = invocation.get_flag("show-structure");
-    let guard = state.unwrap().lock().unwrap();
-    let state = &*guard;
+    let mut guard = state.unwrap().lock().unwrap();
+    let state = &mut *guard;
 
     let dest_address = state
         .friends

@@ -254,22 +254,24 @@ pub fn download_latest_blocks(state_mut: &Mutex<State>) -> Result<(), Box<dyn Er
 }
 
 pub fn advertise_self(state_mut: &Mutex<State>) -> Result<(), Box<dyn Error>> {
-    let guard = state_mut.lock().unwrap();
-    let state = &*guard;
+    let mut guard = state_mut.lock().unwrap();
+    let state = &mut *guard;
     let addr_me = state.remote_addr_me.unwrap();
 
     let req = Request::Advertise(AdvertiseReq { addr_me });
 
-    state.network.broadcast_msg(&req);
+    let mut dead_nodes = state.network.broadcast_msg(&req);
+    state.network.prune_dead_nodes(&mut dead_nodes);
 
     Ok(())
 }
 
 /// Broadcast a new transaction to the network. Assumes the transaction is valid - it is
 /// the caller's job to check this beforehand.
-pub fn send_new_txn(txn: Transaction, state: &State) -> Result<(), Box<dyn Error>> {
+pub fn send_new_txn(txn: Transaction, state: &mut State) -> Result<(), Box<dyn Error>> {
     // TODO: Pay attention to these errors
-    state.network.broadcast_msg(&Request::NewTxn(txn));
+    let mut dead_nodes = state.network.broadcast_msg(&Request::NewTxn(txn));
+    state.network.prune_dead_nodes(&mut dead_nodes);
 
     Ok(())
 }

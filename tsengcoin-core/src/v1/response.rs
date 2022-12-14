@@ -116,7 +116,9 @@ fn handle_get_addr(
 
     drop(guard);
 
-    send_res(res, socket)?;
+    if let Err(err) = send_res(res, socket) {
+        println!("Error sending reply back to node: {}", err);
+    }
 
     Ok(())
 }
@@ -142,11 +144,13 @@ fn handle_advertise(
         .known_nodes
         .push(DistantNode { addr: addr_you });
 
-    state
+    let mut dead_nodes = state
         .network
         .broadcast_msg(&Request::Advertise(AdvertiseReq {
             addr_me: data.addr_me,
         }));
+
+    state.network.prune_dead_nodes(&mut dead_nodes);
 
     if rand::random::<u8>() % 2 == 0 {
         let (best_height, chain_idx, _) = state.blockchain.best_chain();
@@ -174,7 +178,9 @@ fn handle_get_blocks(
     let (my_hash_chain, my_hash_pos) = match my_hash_idx_opt {
         None => {
             let res = Response::GetBlocks(GetBlocksRes::UnknownHash(data.my_hash));
-            send_res(res, socket)?;
+            if let Err(err) = send_res(res, socket) {
+                println!("Error sending reply back to node: {}", err);
+            }
 
             return Ok(());
         }
@@ -185,7 +191,9 @@ fn handle_get_blocks(
     let (your_hash_chain, your_hash_pos) = match your_hash_idx_opt {
         None => {
             let res = Response::GetBlocks(GetBlocksRes::UnknownHash(data.your_hash));
-            send_res(res, socket)?;
+            if let Err(err) = send_res(res, socket) {
+                println!("Error sending reply back to node: {}", err);
+            }
 
             return Ok(());
         }
@@ -193,22 +201,25 @@ fn handle_get_blocks(
     };
 
     if my_hash_chain != your_hash_chain && my_hash_chain != 0 {
-        send_res(
-            Response::GetBlocks(GetBlocksRes::DisconnectedChains),
-            socket,
-        )?;
+        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::DisconnectedChains), socket) {
+            println!("Error sending reply back to node: {}", err);
+        }
 
         return Ok(());
     }
 
     if your_hash_chain != 0 && (your_hash_chain - 1) > state.blockchain.forks.len() {
-        send_res(Response::GetBlocks(GetBlocksRes::BadChainIndex), socket)?;
+        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::BadChainIndex), socket) {
+            println!("Error sending reply back to node: {}", err);
+        }
 
         return Ok(());
     }
 
     if your_hash_pos <= my_hash_pos {
-        send_res(Response::GetBlocks(GetBlocksRes::BadHashes), socket)?;
+        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::BadHashes), socket) {
+            println!("Error sending reply back to node: {}", err);
+        }
 
         return Ok(());
     }
@@ -217,7 +228,9 @@ fn handle_get_blocks(
         .blockchain
         .get_blocks(my_hash_chain, my_hash_pos + 1, your_hash_pos + 1);
 
-    send_res(Response::GetBlocks(GetBlocksRes::Blocks(blocks)), socket)?;
+    if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::Blocks(blocks)), socket) {
+        println!("Error sending reply back to node: {}", err);
+    }
 
     Ok(())
 }
@@ -253,7 +266,8 @@ pub fn handle_new_txn(
         }
     };
 
-    state.network.broadcast_msg(&Request::NewTxn(data.clone()));
+    let mut dead_nodes = state.network.broadcast_msg(&Request::NewTxn(data.clone()));
+    state.network.prune_dead_nodes(&mut dead_nodes);
 
     if is_enc_req(&data) && is_enc_req_to_me(&data, state) {
         let enc_req = decompose_enc_req(&data).unwrap();
@@ -367,7 +381,8 @@ pub fn handle_new_block(
 
     state.resolve_forks();
 
-    state.network.broadcast_msg(&Request::NewBlock(data));
+    let mut dead_nodes = state.network.broadcast_msg(&Request::NewBlock(data));
+    state.network.prune_dead_nodes(&mut dead_nodes);
 
     Ok(())
 }

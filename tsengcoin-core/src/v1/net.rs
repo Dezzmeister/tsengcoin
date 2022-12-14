@@ -116,6 +116,12 @@ impl PartialEq<SocketAddr> for DistantNode {
     }
 }
 
+impl PartialEq<Node> for DistantNode {
+    fn eq(&self, other: &Node) -> bool {
+        self.addr == other.addr
+    }
+}
+
 #[derive(Debug)]
 pub struct Network {
     pub peers: Vec<Node>,
@@ -154,34 +160,36 @@ impl Network {
         self.known_nodes.shuffle(rng);
     }
 
-    pub fn broadcast(&self, req: &Request) -> Vec<Result<Response, Box<bincode::ErrorKind>>> {
-        // We need these scoped threads because the Rust compiler doesn't know that the threads
-        // won't outlive 'self'. We know this as programmers because 'join' is called on every thread
-        // a few lines below.
-
+    pub fn broadcast_msg(&self, msg: &Request) -> Vec<usize> {
         self.peers
             .iter()
-            .map(|n| send_req(req, &n.addr))
-            .collect::<Vec<Result<Response, Box<bincode::ErrorKind>>>>()
+            .enumerate()
+            .filter_map(|(i, n)| {
+                match send_msg(msg, &n.addr) {
+                    Ok(_) => None,
+                    Err(_) => Some(i)
+                }
+            })
+            .collect::<Vec<usize>>()
     }
 
-    pub fn broadcast_except(
-        &self,
-        except: SocketAddr,
-        req: &Request,
-    ) -> Vec<Result<Response, Box<bincode::ErrorKind>>> {
-        self.peers
-            .iter()
-            .filter(|n| *n != except)
-            .map(|n| send_req(req, &n.addr))
-            .collect::<Vec<Result<Response, Box<bincode::ErrorKind>>>>()
-    }
+    pub fn prune_dead_nodes(&mut self, broadcast_result: &mut [usize]) {
+        broadcast_result.sort_unstable();
 
-    pub fn broadcast_msg(&self, msg: &Request) -> Vec<Result<(), Box<bincode::ErrorKind>>> {
-        self.peers
-            .iter()
-            .map(|n| send_msg(msg, &n.addr))
-            .collect::<Vec<Result<(), Box<bincode::ErrorKind>>>>()
+        let mut known_poses: Vec<usize> = vec![];
+
+        for pos in broadcast_result.iter().rev() {
+            let dead_node = self.peers.remove(*pos);
+            if let Some(known_pos) = self.known_nodes.iter().position(|k| k == &dead_node) {
+                known_poses.push(known_pos);
+            }
+        }
+
+        known_poses.sort();
+
+        for pos in known_poses.iter().rev() {
+            self.known_nodes.remove(*pos);
+        }
     }
 
     /// Pick new peers at random from the list of known peers. If the network is large enough then we
@@ -196,6 +204,8 @@ impl Network {
         best_height: usize,
         best_hash: Hash256,
     ) {
+        // Move the known nodes around then take the first nodes from 0 to `num_peers`. These will be our
+        // prospective peers - we'll send GetAddrs and handle the results accordingly.
         self.shuffle();
         let num_peers = min(self.known_nodes.len(), MAX_NEIGHBORS);
         let new_peers = self.known_nodes[0..num_peers]
@@ -305,8 +315,15 @@ pub fn listen_for_connections(
         match stream {
             Err(err) => println!("Error receiving incoming connection: {}", err),
             Ok(conn) => {
-                let req: Request = bincode::deserialize_from(&conn)?;
+                let req: Request = match bincode::deserialize_from(&conn) {
+                    Ok(data) => data,
+                    Err(err) => {
+                        println!("Received invalid request over TCP: {}", err);
+                        continue;
+                    }
+                };
 
+                // If something goes wrong here, we want to panic. Nothing should go wrong here
                 handle_request(req, &conn, gui_channels, state_arc)?;
             }
         }
@@ -327,7 +344,13 @@ pub fn listen_for_connections(
         match stream {
             Err(err) => println!("Error receiving incoming connection: {}", err),
             Ok(conn) => {
-                let req: Request = bincode::deserialize_from(&conn)?;
+                let req: Request = match bincode::deserialize_from(&conn) {
+                    Ok(data) => data,
+                    Err(err) => {
+                        println!("Received invalid request over TCP: {}", err);
+                        continue;
+                    }
+                };
 
                 handle_request(req, &conn, gui_channels, state_arc)?;
             }

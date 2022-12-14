@@ -96,7 +96,7 @@ impl NewChatUI {
                     Ok(req) => req,
                 };
 
-            match send_new_txn(connect_req, &state) {
+            match send_new_txn(connect_req, &mut state) {
                 Err(err) => println!("Error sending chat transaction: {}", err),
                 Ok(_) => {
                     println!("Sent chat request");
