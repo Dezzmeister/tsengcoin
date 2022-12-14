@@ -220,12 +220,12 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     get_first_peers(seed_addr, &state_arc)?;
     discover(seed_addr, &state_arc)?;
     download_latest_blocks(&state_arc)?;
+    advertise_self(&state_arc_2).expect("Failed to advertise self to network");
 
     println!("Starting network listener thread");
     thread::Builder::new()
         .name(String::from("network-listener"))
         .spawn(move || {
-            advertise_self(&state_arc_2).expect("Failed to advertise self to network");
             listen_for_connections(addr_me, &gui_channels, &state_arc_2)
                 .expect("Network listener thread crashed");
         })
