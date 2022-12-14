@@ -225,9 +225,9 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     thread::Builder::new()
         .name(String::from("network-listener"))
         .spawn(move || {
+            advertise_self(&state_arc_2).expect("Failed to advertise self to network");
             listen_for_connections(addr_me, &gui_channels, &state_arc_2)
                 .expect("Network listener thread crashed");
-            advertise_self(&state_arc_2).expect("Failed to advertise self to network");
         })
         .unwrap();
 
