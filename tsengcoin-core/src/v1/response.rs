@@ -114,8 +114,6 @@ fn handle_get_addr(
 
     state.network.clean(state.remote_addr_me.unwrap());
 
-    drop(guard);
-
     if let Err(err) = send_res(res, socket) {
         println!("Error sending reply back to node: {}", err);
     }
