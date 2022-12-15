@@ -23,7 +23,7 @@ use super::{
     block_verify::verify_block,
     chain_request::{decompose_dh_req, is_dh_req, is_dh_req_to_me},
     encrypted_msg::{decompose_enc_req, handle_chain_request, is_enc_req, is_enc_req_to_me},
-    net::{DistantNode, Node, PROTOCOL_VERSION},
+    net::{DistantNode, Node, PROTOCOL_VERSION, broadcast_async},
     request::{AdvertiseReq, GetAddrReq, GetBlocksReq, Request},
     state::{State, GUIChannels},
     transaction::Transaction,
@@ -145,22 +145,28 @@ fn handle_advertise(
         .known_nodes
         .push(DistantNode { addr: addr_you });
 
-    let mut dead_nodes = state
-        .network
-        .broadcast_msg(&Request::Advertise(AdvertiseReq {
-            addr_me: data.addr_me,
-        }));
+    let peers = state.network.peer_addrs();
+    drop(guard);
 
-    state.network.prune_dead_nodes(&mut dead_nodes);
+    let mut dead_nodes = broadcast_async(Request::Advertise(data), &peers);
+
+    if !dead_nodes.is_empty() {
+        let state = &mut state_mut.lock().unwrap();
+        state.network.prune_dead_nodes(&mut dead_nodes);
+    }
 
     if rand::random::<u8>() % 2 == 0 {
+        let state = &mut state_mut.lock().unwrap();
+
         let (best_height, chain_idx, _) = state.blockchain.best_chain();
+        let top_hash = state.blockchain.top_hash(chain_idx);
+        let port = state.port();
 
         state.network.find_new_friends(
-            state.port(),
-            state.remote_addr_me.unwrap(),
+            port,
+            addr_me,
             best_height,
-            state.blockchain.top_hash(chain_idx),
+            top_hash,
         );
     }
 
@@ -267,8 +273,17 @@ pub fn handle_new_txn(
         }
     };
 
-    let mut dead_nodes = state.network.broadcast_msg(&Request::NewTxn(data.clone()));
-    state.network.prune_dead_nodes(&mut dead_nodes);
+    let peers = state.network.peer_addrs();
+    drop(guard);
+
+    let mut dead_nodes = broadcast_async(Request::NewTxn(data.clone()), &peers);
+
+    let mut guard = state_arc.lock().unwrap();
+    let state = &mut *guard;
+
+    if !dead_nodes.is_empty() {
+        state.network.prune_dead_nodes(&mut dead_nodes);
+    }
 
     if is_enc_req(&data) && is_enc_req_to_me(&data, state) {
         let enc_req = decompose_enc_req(&data).unwrap();
@@ -382,8 +397,15 @@ pub fn handle_new_block(
 
     state.resolve_forks();
 
-    let mut dead_nodes = state.network.broadcast_msg(&Request::NewBlock(data));
-    state.network.prune_dead_nodes(&mut dead_nodes);
+    let peers = state.network.peer_addrs();
+    drop(guard);
+
+    let mut dead_nodes = broadcast_async(Request::NewBlock(data), &peers);
+
+    if !peers.is_empty() {
+        let state = &mut state_mut.lock().unwrap();
+        state.network.prune_dead_nodes(&mut dead_nodes);
+    }
 
     Ok(())
 }

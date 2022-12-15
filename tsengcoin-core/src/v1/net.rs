@@ -8,6 +8,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use crossbeam::thread::ScopedJoinHandle;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -173,22 +174,33 @@ impl Network {
             .collect::<Vec<usize>>()
     }
 
-    pub fn prune_dead_nodes(&mut self, broadcast_result: &mut [usize]) {
-        broadcast_result.sort_unstable();
+    pub fn peer_addrs(&self) -> Vec<SocketAddr> {
+        self.peers.iter().map(|n| n.addr).collect::<Vec<SocketAddr>>()
+    }
 
+    pub fn prune_dead_nodes(&mut self, broadcast_result: &mut [SocketAddr]) {
+        let mut peer_poses: Vec<usize> = vec![];
         let mut known_poses: Vec<usize> = vec![];
 
-        for pos in broadcast_result.iter().rev() {
-            let dead_node = self.peers.remove(*pos);
-            if let Some(known_pos) = self.known_nodes.iter().position(|k| k == &dead_node) {
-                known_poses.push(known_pos);
+        for addr in broadcast_result {
+            if let Some(pos) = self.peers.iter().position(|n| &n.addr == addr) {
+                peer_poses.push(pos);
+            }
+
+            if let Some(pos) = self.known_nodes.iter().position(|n| &n.addr == addr) {
+                known_poses.push(pos);
             }
         }
 
-        known_poses.sort();
+        peer_poses.sort_unstable();
+        known_poses.sort_unstable();
 
-        for pos in known_poses.iter().rev() {
-            self.known_nodes.remove(*pos);
+        for pos in peer_poses.into_iter().rev() {
+            self.peers.remove(pos);
+        }
+
+        for pos in known_poses.into_iter().rev() {
+            self.known_nodes.remove(pos);
         }
     }
 
@@ -237,7 +249,7 @@ impl Network {
 
         self.peers.clear();
 
-        for i in 0..results.len() {
+        for i in (0..results.len()).rev() {
             let result = &results[i];
 
             match result {
@@ -312,6 +324,37 @@ impl Network {
 
         self.clean(addr_me);
     }
+}
+
+pub fn broadcast_async(msg: Request, peers: &[SocketAddr]) -> Vec<SocketAddr> {
+    let msg_arc = Arc::new(msg);
+
+    crossbeam::scope(|scope| {
+        let join_handles = peers
+            .iter()
+            .map(|addr| {
+                let msg_arc_clone = Arc::clone(&msg_arc);
+                scope.spawn(move |_| {
+                    let res = send_msg(&msg_arc_clone, &addr);
+
+                    (addr, res.is_err())
+                })
+            })
+            .collect::<Vec<ScopedJoinHandle<(&SocketAddr, bool)>>>();
+
+        join_handles
+            .into_iter()
+            .filter_map(|j| {
+                let (a, ok) = j.join().unwrap();
+                match ok {
+                    // Node is not dead
+                    false => None,
+                    // Node is dead
+                    true => Some(a.clone())
+                }
+            })
+            .collect::<Vec<SocketAddr>>()
+    }).unwrap()
 }
 
 #[cfg(feature = "gui")]
