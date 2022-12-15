@@ -8,7 +8,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use crossbeam::thread::ScopedJoinHandle;
+use crossbeam::thread::{ScopedJoinHandle};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +23,7 @@ use super::state::GUIChannels;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_NEIGHBORS: usize = 8;
+pub const MAX_GET_ADDRS: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct DistantNode {
@@ -123,6 +124,18 @@ impl PartialEq<Node> for DistantNode {
     }
 }
 
+impl PartialEq<&mut SocketAddr> for Node {
+    fn eq(&self, other: &&mut SocketAddr) -> bool {
+        &&self.addr == other
+    }
+}
+
+impl PartialEq<&mut SocketAddr> for DistantNode {
+    fn eq(&self, other: &&mut SocketAddr) -> bool {
+        &&self.addr == other
+    }
+}
+
 #[derive(Debug)]
 pub struct Network {
     pub peers: Vec<Node>,
@@ -179,106 +192,9 @@ impl Network {
     }
 
     pub fn prune_dead_nodes(&mut self, broadcast_result: &mut [SocketAddr]) {
-        let mut peer_poses: Vec<usize> = vec![];
-        let mut known_poses: Vec<usize> = vec![];
-
-        for addr in broadcast_result {
-            if let Some(pos) = self.peers.iter().position(|n| &n.addr == addr) {
-                peer_poses.push(pos);
-            }
-
-            if let Some(pos) = self.known_nodes.iter().position(|n| &n.addr == addr) {
-                known_poses.push(pos);
-            }
+        for addr in broadcast_result.into_iter() {
+            self.remove(addr);
         }
-
-        peer_poses.sort_unstable();
-        known_poses.sort_unstable();
-
-        for pos in peer_poses.into_iter().rev() {
-            self.peers.remove(pos);
-        }
-
-        for pos in known_poses.into_iter().rev() {
-            self.known_nodes.remove(pos);
-        }
-    }
-
-    /// Pick new peers at random from the list of known peers. If the network is large enough then we
-    /// choose [MAX_NEIGHBORS] peers; if not, we choose all known nodes as peers. Then we send each prospective peer
-    /// a 'GetAddr' request to get some crucial info. There may be several nodes, so this step is done in parallel.
-    /// We then wait for and collect the responses to these requests and loop over them. For any bad response, we
-    /// drop the node from our list of known nodes. We keep the good responses and use them as our peers.
-    pub fn find_new_friends(
-        &mut self,
-        listen_port: u16,
-        addr_me: SocketAddr,
-        best_height: usize,
-        best_hash: Hash256,
-    ) {
-        self.merge(addr_me);
-        // Move the known nodes around then take the first nodes from 0 to `num_peers`. These will be our
-        // prospective peers - we'll send GetAddrs and handle the results accordingly.
-        self.shuffle();
-        let num_peers = min(self.known_nodes.len(), MAX_NEIGHBORS);
-        let new_peers = self.known_nodes[0..num_peers]
-            .iter()
-            .map(|n| n.addr)
-            .collect::<Vec<SocketAddr>>();
-
-        let results = crossbeam::scope(|scope| {
-            new_peers
-                .iter()
-                .map(|addr| {
-                    scope.spawn(move |_| {
-                        let req = Request::GetAddr(GetAddrReq {
-                            version: PROTOCOL_VERSION,
-                            addr_you: *addr,
-                            listen_port,
-                            best_height,
-                            best_hash,
-                        });
-
-                        send_req(&req, addr)
-                    })
-                })
-                .map(|t| t.join().unwrap())
-                .collect::<Vec<Result<Response, Box<bincode::ErrorKind>>>>()
-        })
-        .unwrap();
-
-        self.peers.clear();
-
-        for i in (0..results.len()).rev() {
-            let result = &results[i];
-
-            match result {
-                Ok(Response::GetAddr(data)) => {
-                    let addr_you = new_peers[i];
-                    let node = Node {
-                        version: data.version,
-                        addr: addr_you,
-                        last_send: Utc::now(),
-                        best_height: Some(data.best_height),
-                        best_hash: Some(data.best_hash),
-                    };
-
-                    self.peers.push(node);
-
-                    let mut neighbors = data
-                        .neighbors
-                        .iter()
-                        .map(|n| n.into())
-                        .collect::<Vec<DistantNode>>();
-                    self.known_nodes.append(&mut neighbors);
-                }
-
-                // Do not accept bogus
-                Ok(_) | Err(_) => drop(self.known_nodes.remove(i)),
-            }
-        }
-
-        self.clean(addr_me);
     }
 
     pub fn has_peer<T: PartialEq>(&self, item: T) -> bool
@@ -324,6 +240,135 @@ impl Network {
 
         self.clean(addr_me);
     }
+}
+
+/// Pick new peers at random from the list of known peers. If the network is large enough then we
+/// choose [MAX_NEIGHBORS] peers; if not, we choose all known nodes as peers. Then we send each prospective peer
+/// a 'GetAddr' request to get some crucial info. There may be several nodes, so this step is done in parallel.
+/// We then wait for and collect the responses to these requests and loop over them. For any bad response, we
+/// drop the node from our list of known nodes. We keep the good responses and use them as our peers.
+pub fn find_new_friends(state_mut: &Mutex<State>) {
+    let mut guard = state_mut.lock().unwrap();
+    let state = &mut *guard;
+    let addr_me = state.remote_addr_me.unwrap();
+    let (best_height, chain_idx, _) = state.blockchain.best_chain();
+    let best_hash = state.blockchain.top_hash(chain_idx);
+    let listen_port = state.port();
+
+    state.network.merge(addr_me);
+    state.network.shuffle();
+    let num_get_addrs = min(state.network.known_nodes.len(), MAX_GET_ADDRS);
+    let get_addr_addrs = state.network.known_nodes[0..num_get_addrs]
+        .iter()
+        .map(|n| n.addr)
+        .collect::<Vec<SocketAddr>>();
+    
+    // Release the mutex while waiting for responses so we don't hold up the other threads
+    drop(guard);
+
+    let get_addr_responses = broadcast_async_req_fn(|addr| {
+        Request::GetAddr(GetAddrReq {
+            version: PROTOCOL_VERSION,
+            addr_you: addr,
+            listen_port,
+            best_height,
+            best_hash,
+        })
+    }, &get_addr_addrs);
+
+    let mut guard = state_mut.lock().unwrap();
+    let state = &mut *guard;
+
+    for (res_opt, addr) in get_addr_responses {
+        if res_opt.is_none() {
+            state.network.remove(addr);
+            continue;
+        }
+
+        match res_opt.unwrap() {
+            Response::GetAddr(data) => {
+                let node = Node {
+                    version: data.version,
+                    addr,
+                    last_send: Utc::now(),
+                    best_height: Some(data.best_height),
+                    best_hash: Some(data.best_hash),
+                };
+
+                state.network.peers.push(node);
+
+                let mut neighbors = data
+                    .neighbors
+                    .iter()
+                    .map(|n| n.into())
+                    .collect::<Vec<DistantNode>>();
+                state.network.known_nodes.append(&mut neighbors);
+            },
+            _ => state.network.remove(addr)
+        };
+    }
+
+    state.network.clean(addr_me);
+}
+
+pub fn broadcast_async_req_fn<F>(req_fn: F, peers: &[SocketAddr]) -> Vec<(Option<Response>, SocketAddr)>
+    where F: Fn(SocketAddr) -> Request
+{
+    crossbeam::scope(|scope| {
+        let join_handles = peers
+            .iter()
+            .map(|addr| {
+                let req = req_fn(addr.clone());
+                scope.spawn(move |_| {
+                    let res = match send_req(&req, &addr) {
+                        Ok(data) => Some(data),
+                        Err(_) => None
+                    };
+
+                    (res, addr)
+                })
+            })
+            .collect::<Vec<ScopedJoinHandle<(Option<Response>, &SocketAddr)>>>();
+
+        join_handles
+            .into_iter()
+            .map(|j| {
+                let (res, addr) = j.join().unwrap();
+
+                (res, addr.clone())
+            })
+            .collect::<Vec<(Option<Response>, SocketAddr)>>()
+    }).unwrap()
+}
+
+pub fn broadcast_async_req(req: Request, peers: &[SocketAddr]) -> Vec<(Option<Response>, SocketAddr)> {
+    let req_arc = Arc::new(req);
+
+    crossbeam::scope(|scope| {
+        let join_handles = peers
+            .iter()
+            .map(|addr| {
+                let req_arc_clone = Arc::clone(&req_arc);
+                scope.spawn(move |_| {
+                    let res = match send_req(&req_arc_clone, &addr) {
+                        Ok(data) => Some(data),
+                        Err(_) => None
+                    };
+
+                    (res, addr)
+                })
+            })
+            .collect::<Vec<ScopedJoinHandle<(Option<Response>, &SocketAddr)>>>();
+
+        join_handles
+            .into_iter()
+            .map(|j| {
+                let (res, addr) = j.join().unwrap();
+
+                (res, addr.clone())
+            })
+            .collect::<Vec<(Option<Response>, SocketAddr)>>()
+    }).unwrap()
 }
 
 pub fn broadcast_async(msg: Request, peers: &[SocketAddr]) -> Vec<SocketAddr> {

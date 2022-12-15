@@ -23,7 +23,7 @@ use super::{
     block_verify::verify_block,
     chain_request::{decompose_dh_req, is_dh_req, is_dh_req_to_me},
     encrypted_msg::{decompose_enc_req, handle_chain_request, is_enc_req, is_enc_req_to_me},
-    net::{DistantNode, Node, PROTOCOL_VERSION, broadcast_async},
+    net::{DistantNode, Node, PROTOCOL_VERSION, broadcast_async, find_new_friends},
     request::{AdvertiseReq, GetAddrReq, GetBlocksReq, Request},
     state::{State, GUIChannels},
     transaction::Transaction,
@@ -156,18 +156,7 @@ fn handle_advertise(
     }
 
     if rand::random::<u8>() % 2 == 0 {
-        let state = &mut state_mut.lock().unwrap();
-
-        let (best_height, chain_idx, _) = state.blockchain.best_chain();
-        let top_hash = state.blockchain.top_hash(chain_idx);
-        let port = state.port();
-
-        state.network.find_new_friends(
-            port,
-            addr_me,
-            best_height,
-            top_hash,
-        );
+        find_new_friends(state_mut);
     }
 
     Ok(())
