@@ -56,7 +56,7 @@ pub enum GetBlocksRes {
 
 pub fn handle_request(
     req: Request,
-    socket: &TcpStream,
+    socket: TcpStream,
     gui_channels: &GUIChannels,
     state_arc: &Arc<Mutex<State>>,
 ) -> Result<(), Box<dyn Error>> {
@@ -73,7 +73,7 @@ pub fn handle_request(
 
 fn handle_get_addr(
     data: GetAddrReq,
-    socket: &TcpStream,
+    socket: TcpStream,
     state_mut: &Mutex<State>,
 ) -> Result<(), Box<dyn Error>> {
     let peer_remote_addr = match socket.peer_addr() {
@@ -117,7 +117,7 @@ fn handle_get_addr(
 
     state.network.clean(state.remote_addr_me.unwrap());
 
-    if let Err(err) = send_res(res, socket) {
+    if let Err(err) = send_res(res, &socket) {
         println!("Error sending reply back to node: {}", err);
     }
 
@@ -126,9 +126,11 @@ fn handle_get_addr(
 
 fn handle_advertise(
     data: AdvertiseReq,
-    _socket: &TcpStream,
+    socket: TcpStream,
     state_mut: &Mutex<State>,
 ) -> Result<(), Box<dyn Error>> {
+    drop(socket);
+
     let addr_you = data.addr_me;
 
     let mut guard = state_mut.lock().unwrap();
@@ -164,7 +166,7 @@ fn handle_advertise(
 
 fn handle_get_blocks(
     data: GetBlocksReq,
-    socket: &TcpStream,
+    socket: TcpStream,
     state_mut: &Mutex<State>,
 ) -> Result<(), Box<dyn Error>> {
     let mut guard = state_mut.lock().unwrap();
@@ -174,7 +176,7 @@ fn handle_get_blocks(
     let (my_hash_chain, my_hash_pos) = match my_hash_idx_opt {
         None => {
             let res = Response::GetBlocks(GetBlocksRes::UnknownHash(data.my_hash));
-            if let Err(err) = send_res(res, socket) {
+            if let Err(err) = send_res(res, &socket) {
                 println!("Error sending reply back to node: {}", err);
             }
 
@@ -187,7 +189,7 @@ fn handle_get_blocks(
     let (your_hash_chain, your_hash_pos) = match your_hash_idx_opt {
         None => {
             let res = Response::GetBlocks(GetBlocksRes::UnknownHash(data.your_hash));
-            if let Err(err) = send_res(res, socket) {
+            if let Err(err) = send_res(res, &socket) {
                 println!("Error sending reply back to node: {}", err);
             }
 
@@ -197,7 +199,7 @@ fn handle_get_blocks(
     };
 
     if my_hash_chain != your_hash_chain && my_hash_chain != 0 {
-        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::DisconnectedChains), socket) {
+        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::DisconnectedChains), &socket) {
             println!("Error sending reply back to node: {}", err);
         }
 
@@ -205,7 +207,7 @@ fn handle_get_blocks(
     }
 
     if your_hash_chain != 0 && (your_hash_chain - 1) > state.blockchain.forks.len() {
-        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::BadChainIndex), socket) {
+        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::BadChainIndex), &socket) {
             println!("Error sending reply back to node: {}", err);
         }
 
@@ -213,7 +215,7 @@ fn handle_get_blocks(
     }
 
     if your_hash_pos <= my_hash_pos {
-        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::BadHashes), socket) {
+        if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::BadHashes), &socket) {
             println!("Error sending reply back to node: {}", err);
         }
 
@@ -224,7 +226,7 @@ fn handle_get_blocks(
         .blockchain
         .get_blocks(my_hash_chain, my_hash_pos + 1, your_hash_pos + 1);
 
-    if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::Blocks(blocks)), socket) {
+    if let Err(err) = send_res(Response::GetBlocks(GetBlocksRes::Blocks(blocks)), &socket) {
         println!("Error sending reply back to node: {}", err);
     }
 
@@ -233,10 +235,12 @@ fn handle_get_blocks(
 
 pub fn handle_new_txn(
     data: Transaction,
-    _socket: &TcpStream,
+    socket: TcpStream,
     gui_channels: &GUIChannels,
     state_arc: &Arc<Mutex<State>>,
 ) -> Result<(), Box<dyn Error>> {
+    drop(socket);
+
     let mut guard = state_arc.lock().unwrap();
     let state = &mut *guard;
 
@@ -355,9 +359,11 @@ pub fn handle_new_txn(
 
 pub fn handle_new_block(
     data: Block,
-    _socket: &TcpStream,
+    socket: TcpStream,
     state_mut: &Mutex<State>,
 ) -> Result<(), Box<dyn Error>> {
+    drop(socket);
+
     let mut guard = state_mut.lock().unwrap();
     let state = &mut *guard;
 
