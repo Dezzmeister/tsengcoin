@@ -17,7 +17,7 @@ use crate::{
     gui::{bridge::get_wallet_password_arg},
     tsengscript_interpreter::{execute, ExecutionResult, Token},
     v1::{
-        miners::api::{miners, num_miners, start_miner},
+        miners::{api::{miners, num_miners, start_miner}, stats::{MinerStatsState, DEFAULT_GRANULARITY}},
         net::listen_for_connections,
         request::{advertise_self, discover, download_latest_blocks, get_first_peers},
         state::{State, GUIChannels},
@@ -202,7 +202,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     };
 
     #[cfg(not(feature = "gui"))]
-    let (mut state, miner_receiver, gui_channels) = {
+    let (mut state, miner_receiver, gui_channels) = {        
         let (state, miner_receiver) = State::new(
             addr_me,
             keypair,
@@ -211,6 +211,10 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
 
         (state, miner_receiver, GUIChannels {})
     };
+
+    state.wg_size = invocation.get_optional("wg-size").map(|s| s.parse::<usize>().unwrap());
+    state.num_work_groups = invocation.get_optional("work-groups").map(|s| s.parse::<usize>().unwrap());
+    state.miner_stats = miner_stats(invocation);
 
     get_first_peers(seed_addr, &mut state)?;
     discover(seed_addr, &mut state)?;
@@ -221,7 +225,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
     let state_arc = Arc::new(state_mut);
     let state_arc_2 = Arc::clone(&state_arc);
 
-    println!("Starting network listener thread");
+    println!("Starting network listener thread. Listening on {}", addr_me);
     thread::Builder::new()
         .name(String::from("network-listener"))
         .spawn(move || {
@@ -306,7 +310,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     let addr_me = SocketAddr::new(listen_ip, listen_port);
 
     #[cfg(feature = "gui")]
-    let (state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender) = {
+    let (mut state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender) = {
         let with_gui = invocation.get_flag("gui");
         let gui_state = match with_gui {
             false => None,
@@ -332,7 +336,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
     };
 
     #[cfg(not(feature = "gui"))]
-    let (state, miner_receiver, gui_channels) = {
+    let (mut state, miner_receiver, gui_channels) = {
         let (state, miner_receiver) = State::new(
             addr_me,
             keypair,
@@ -341,6 +345,10 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
 
         (state, miner_receiver, GUIChannels {})
     };
+
+    state.wg_size = invocation.get_optional("wg-size").map(|s| s.parse::<usize>().unwrap());
+    state.num_work_groups = invocation.get_optional("work-groups").map(|s| s.parse::<usize>().unwrap());
+    state.miner_stats = miner_stats(invocation);
 
     let state_mut = Mutex::new(state);
     let state_arc = Arc::new(state_mut);
@@ -486,6 +494,7 @@ pub fn make_command_map() -> CommandMap<()> {
     };
 
     let num_miners = num_miners();
+    let miners = miners();
     let mut connect_flags = vec![
         #[cfg(feature = "gui")]
         Flag::new(
@@ -497,7 +506,7 @@ pub fn make_command_map() -> CommandMap<()> {
         VarField::new(
             "ip",
             "Your IP address. Use this to specify a different IP to listen on."
-        )
+        ),
     ];
     if num_miners == 1 {
         connect_flags.append(&mut vec![
@@ -507,13 +516,39 @@ pub fn make_command_map() -> CommandMap<()> {
             )
         ]);
     } else if num_miners > 1 {
-        let miners = miners();
         let placeholder = miner_placeholder(&miners);
         let readable_miners = miner_list(&miners);
         connect_optionals.push(VarField::new_placeholder(
             "miner",
             &format!("Set this to start the client with a miner. There are different mining kernels you can use, the options are{}", readable_miners),
             &placeholder
+        ));
+    }
+
+    if miners.contains(&String::from("cl")) {
+        connect_optionals.push(VarField::new(
+            "wg-size",
+            "Work group size. Only meaningful if using the OpenCL miner."
+        ));
+        connect_optionals.push(VarField::new(
+            "work-groups",
+            "Number of work groups. Only meaningful if using the OpenCL miner. The number of nonces per round will be (work-groups * wg-size)"
+        ));
+    }
+
+    if num_miners > 0 {
+        connect_optionals.push(VarField::new_placeholder(
+            "miner-stats-file",
+            "Set this variable to record miner stats in the background. Stats will be saved as CSV to the file provided. The file will be created if it doesn't exist. You can tune the measurement parameters with the other `miner-stats` options.",
+            "stats.csv"
+        ));
+        connect_optionals.push(VarField::new(
+            "miner-stats-time",
+            "Length of time (in millis) to record miner stats for. Leave this option unset to record stats indefinitely."
+        ));
+        connect_optionals.push(VarField::new(
+            "miner-stats-granularity",
+            &format!("Length of time (in millis) between each hashrate measurement. By default, this is {} milliseconds", DEFAULT_GRANULARITY)
         ));
     }
 
@@ -644,4 +679,20 @@ fn miner_list(miners: &Vec<String>) -> String {
     out.remove(out.len() - 1);
 
     out
+}
+
+fn miner_stats(invocation: &CommandInvocation) -> Option<MinerStatsState> {
+    let filename = match invocation.get_optional("miner-stats-file") {
+        None => return None,
+        Some(filename) => filename
+    };
+
+    let record_time = invocation.get_optional("miner-stats-time").map(|t| t.parse::<u32>().unwrap()).unwrap_or(u32::MAX);
+    let granularity = invocation.get_optional("miner-stats-granularity").map(|t| t.parse::<u32>().unwrap()).unwrap_or(DEFAULT_GRANULARITY);
+
+    Some(MinerStatsState::new(
+        granularity,
+        record_time,
+        filename
+    ))
 }

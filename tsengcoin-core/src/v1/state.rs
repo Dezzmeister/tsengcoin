@@ -18,7 +18,7 @@ use crate::{
 use super::{
     block::{genesis_block, resolve_forks, Block, BlockchainDB},
     chain_request::FriendState,
-    miners::api::MinerMessage,
+    miners::{api::MinerMessage, stats::MinerStatsState},
     net::Network,
     transaction::{Transaction, TransactionIndex, UTXOPool},
 };
@@ -49,6 +49,11 @@ pub struct State {
     #[cfg(feature = "gui")]
     pub gui: Option<GUIState>,
     pub miner: Option<String>,
+    pub miner_stats: Option<MinerStatsState>,
+    /// Work group size, only meaningful for the CL miner.
+    pub wg_size: Option<usize>,
+    /// Number of work groups
+    pub num_work_groups: Option<usize>,
 
     miner_channel: Sender<MinerMessage>,
 }
@@ -105,6 +110,9 @@ impl State {
                 #[cfg(feature = "gui")]
                 gui,
                 miner,
+                miner_stats: None,
+                wg_size: None,
+                num_work_groups: None,
                 miner_channel: miner_sender,
             },
             miner_receiver,

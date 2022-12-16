@@ -1,4 +1,5 @@
 pub mod api;
+pub mod stats;
 
 #[cfg(feature = "cuda_miner")]
 pub mod cuda;

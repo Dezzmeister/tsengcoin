@@ -1,6 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
 use cust::prelude::*;
-use lazy_static::lazy_static;
 use std::sync::{
     mpsc::{Receiver, TryRecvError},
     Mutex,
@@ -10,29 +9,18 @@ use crate::{
     hash::hash_chunks,
     v1::{
         block::{
-            make_merkle_root, Block, BlockHeader, RawBlock, RawBlockHeader,
-            MAX_TRANSACTION_FIELD_SIZE,
+            Block, BlockHeader,
         },
         block_verify::verify_block,
         request::Request,
         state::State,
-        transaction::{coinbase_size_estimate, compute_fee, make_coinbase_txn, Transaction},
-        VERSION,
+        miners::{api::{make_raw_block, POLL_INTERVAL, randomize, find_winner}, stats::DEFAULT_GRANULARITY}, net::broadcast_async,
     },
-    wallet::Hash256,
 };
 
 use super::api::MinerMessage;
 
 static MINER_PTX: &str = include_str!("../../../kernels/miner.ptx");
-
-/// Update the hashes per sec metric every 5 seconds
-const HASH_PER_SEC_INTERVAL: i64 = 5;
-
-lazy_static! {
-    /// Poll the MinerMessage receiver every 5 seconds
-    static ref POLL_INTERVAL: Duration = Duration::seconds(5);
-}
 
 struct CUDAContext {
     _context: Context,
@@ -88,6 +76,16 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
     let mut total_hashes: usize = 0;
 
     let mut last_poll_time = Utc::now();
+
+    let hashrate_interval = state_mut.lock().unwrap().miner_stats.as_ref().map(|m| m.granularity).unwrap_or(DEFAULT_GRANULARITY);
+    let hash_per_sec_duration = Duration::milliseconds(hashrate_interval as i64);
+
+    if let Some(stats) = &mut state_mut.lock().unwrap().miner_stats {
+        println!("Recording miner stats for {}s. Stats will be saved to {}", stats.record_for / 1000, stats.filename);
+        stats.start();
+    }
+
+    let mut printed_stats_done = false;
 
     loop {
         now = Utc::now();
@@ -162,17 +160,32 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
 
         total_hashes += num_nonces;
 
-        if now - print_time > Duration::seconds(HASH_PER_SEC_INTERVAL) {
-            state_mut.lock().unwrap().hashes_per_second =
-                total_hashes / (HASH_PER_SEC_INTERVAL as usize);
+        if now - print_time > hash_per_sec_duration {
+            let state = &mut state_mut.lock().unwrap();
+
+            let hashrate = 
+                1000 * (total_hashes  / hashrate_interval as usize);
             print_time = now;
             total_hashes = 0;
+
+            state.hashes_per_second = hashrate;
+
+            if let Some(stats) = &mut state.miner_stats {
+                if !stats.done() {
+                    stats.add_record(hashrate);
+                    stats.save().expect(&format!("Failed to save stats to file: {}", stats.filename));
+                } else if !printed_stats_done {
+                    println!("Finished recording miner statistics. Saved to file {}", stats.filename);
+                    printed_stats_done = true;
+                }
+            }
         }
 
         match find_winner(&nonces, &hashes, &raw_block.header.difficulty_target) {
             None => (),
             Some((nonce, hash)) => {
-                let state = &mut state_mut.lock().unwrap();
+                let mut guard = state_mut.lock().unwrap();
+                let state = &mut *guard;
                 println!("Confirmed new block: {}", hex::encode(&hash));
                 let new_block = Block {
                     header: BlockHeader {
@@ -197,7 +210,14 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                         println!("Rejecting new block: {}", err);
                     }
                     Ok(false) => {
-                        state.network.broadcast_msg(&Request::NewBlock(new_block));
+                        let peers = state.network.peer_addrs();
+                        drop(guard);
+
+                        let mut dead_nodes = broadcast_async(Request::NewBlock(new_block), &peers);
+
+                        if !dead_nodes.is_empty() {
+                            state_mut.lock().unwrap().network.prune_dead_nodes(&mut dead_nodes);
+                        }
                     }
                 }
                 // Force a reset! If we don't do this, we may start working on a fork block because we may loop
@@ -206,86 +226,6 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
             }
         }
     }
-}
-
-fn find_winner(nonces: &[u8], hashes: &[u8], difficulty: &Hash256) -> Option<(Hash256, Hash256)> {
-    for i in 0..(nonces.len() / 32) {
-        let t = i * 32;
-        let hash: &[u8; 32] = hashes[t..(t + 32)].try_into().unwrap();
-
-        if hash < difficulty {
-            let nonce: [u8; 32] = nonces[t..(t + 32)].try_into().unwrap();
-
-            return Some((nonce, hash.to_owned()));
-        }
-    }
-
-    None
-}
-
-fn randomize(bytes: &mut [u8]) {
-    for i in 0..bytes.len() {
-        bytes[i] = rand::random();
-    }
-}
-
-fn make_raw_block(state_mut: &Mutex<State>) -> RawBlock {
-    let state = state_mut.lock().unwrap();
-    let txns = state.pending_txns.clone();
-    let (mut best_txns, fees) = pick_best_transactions(&txns, &state, coinbase_size_estimate());
-    let coinbase = make_coinbase_txn(&state.address, String::from(""), fees, rand::random());
-
-    let mut block_txns = vec![coinbase];
-    block_txns.append(&mut best_txns);
-
-    let prev_hash = state.blockchain.top_hash(0);
-    let difficulty_target = state.blockchain.current_difficulty();
-
-    let merkle_root = make_merkle_root(&block_txns);
-    let header = RawBlockHeader {
-        version: VERSION,
-        prev_hash,
-        merkle_root,
-        timestamp: Utc::now().timestamp().try_into().unwrap(),
-        difficulty_target,
-        nonce: [0; 32],
-    };
-
-    RawBlock {
-        header,
-        transactions: block_txns,
-    }
-}
-
-/// The problem here is to pick which transactions we will include in a block. Generally we want to maximize
-/// the total fees while staying under the block size limit. This is the knapsack problem, and it is NP hard -
-/// so rather than deal with it here we just take as many transactions as we can fit regardless of fee. We could take
-/// a greedy approach to this problem and take the transactions with the highest fees, but then we would have to ensure that
-/// we don't leave any dependency transactions behind. We chose not to deal with this because the network is small
-/// and there won't be enough transactions to even approach the block size limit.
-fn pick_best_transactions(
-    txns: &[Transaction],
-    state: &State,
-    coinbase_size: usize,
-) -> (Vec<Transaction>, u64) {
-    let mut out: Vec<Transaction> = vec![];
-    let mut size: usize = coinbase_size;
-    let mut fees: u64 = 0;
-
-    for txn in txns {
-        let txn_size = txn.size();
-
-        if (txn_size + size) > MAX_TRANSACTION_FIELD_SIZE {
-            continue;
-        }
-
-        let fee = compute_fee(txn, state);
-        out.push(txn.clone());
-        size += txn_size;
-        fees += fee;
-    }
-
-    (out, fees)
 }
 
 fn setup_cuda() -> CUDAContext {
