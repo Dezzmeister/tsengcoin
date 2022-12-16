@@ -255,6 +255,7 @@ fn send_coins_p2pkh(
 
     match verify_transaction(full_txn.clone(), state) {
         Ok(_) => {
+            state.add_pending_txn(full_txn.clone());
             send_new_txn(full_txn, state)?;
             println!("Successfully submitted transaction");
         }
