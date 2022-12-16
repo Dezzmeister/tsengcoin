@@ -14,7 +14,7 @@ use crate::{
 
 use super::{
     block::Block,
-    net::{Node, PROTOCOL_VERSION, MAX_NEIGHBORS, broadcast_async},
+    net::{Node, PROTOCOL_VERSION, MAX_NEIGHBORS, broadcast_async_blast},
     response::{
         GetBlocksRes::{BadChainIndex, BadHashes, Blocks, DisconnectedChains, UnknownHash},
         Response,
@@ -247,8 +247,7 @@ pub fn advertise_self(state: &mut State) -> Result<(), Box<dyn Error>> {
     let req = Request::Advertise(AdvertiseReq { addr_me });
 
     let peers = state.network.peer_addrs();
-    let mut dead_nodes = broadcast_async(req, &peers);
-    state.network.prune_dead_nodes(&mut dead_nodes);
+    broadcast_async_blast(req, &peers);
 
     Ok(())
 }
@@ -258,8 +257,7 @@ pub fn advertise_self(state: &mut State) -> Result<(), Box<dyn Error>> {
 pub fn send_new_txn(txn: Transaction, state: &mut State) -> Result<(), Box<dyn Error>> {
     // TODO: Pay attention to these errors
     let peers = state.network.peer_addrs();
-    let mut dead_nodes = broadcast_async(Request::NewTxn(txn), &peers);
-    state.network.prune_dead_nodes(&mut dead_nodes);
+    broadcast_async_blast(Request::NewTxn(txn), &peers);
 
     Ok(())
 }

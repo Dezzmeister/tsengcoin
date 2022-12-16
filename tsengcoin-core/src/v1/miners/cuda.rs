@@ -14,7 +14,7 @@ use crate::{
         block_verify::verify_block,
         request::Request,
         state::State,
-        miners::{api::{make_raw_block, POLL_INTERVAL, randomize, find_winner}, stats::DEFAULT_GRANULARITY}, net::broadcast_async,
+        miners::{api::{make_raw_block, POLL_INTERVAL, randomize, find_winner}, stats::DEFAULT_GRANULARITY}, net::{broadcast_async_blast},
     },
 };
 
@@ -213,11 +213,7 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                         let peers = state.network.peer_addrs();
                         drop(guard);
 
-                        let mut dead_nodes = broadcast_async(Request::NewBlock(new_block), &peers);
-
-                        if !dead_nodes.is_empty() {
-                            state_mut.lock().unwrap().network.prune_dead_nodes(&mut dead_nodes);
-                        }
+                        broadcast_async_blast(Request::NewBlock(new_block), &peers);
                     }
                 }
                 // Force a reset! If we don't do this, we may start working on a fork block because we may loop

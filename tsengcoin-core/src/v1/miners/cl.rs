@@ -19,7 +19,7 @@ use crate::{
     hash::{hash_chunks},
     v1::{
         block::{BlockHeader, Block},
-        state::State, miners::{api::{make_raw_block, POLL_INTERVAL, randomize, find_winner}, stats::DEFAULT_GRANULARITY}, block_verify::verify_block, request::Request, net::broadcast_async,
+        state::State, miners::{api::{make_raw_block, POLL_INTERVAL, randomize, find_winner}, stats::DEFAULT_GRANULARITY}, block_verify::verify_block, request::Request, net::{broadcast_async_blast},
     },
 };
 
@@ -260,11 +260,7 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                         let peers = state.network.peer_addrs();
                         drop(guard);
 
-                        let mut dead_nodes = broadcast_async(Request::NewBlock(new_block), &peers);
-
-                        if !dead_nodes.is_empty() {
-                            state_mut.lock().unwrap().network.prune_dead_nodes(&mut dead_nodes);
-                        }
+                        broadcast_async_blast(Request::NewBlock(new_block), &peers);
                     }
                 }
 

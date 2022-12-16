@@ -402,6 +402,22 @@ pub fn broadcast_async(msg: Request, peers: &[SocketAddr]) -> Vec<SocketAddr> {
     }).unwrap()
 }
 
+pub fn broadcast_async_blast(msg: Request, peers: &[SocketAddr]) {
+    let msg_arc = Arc::new(msg);
+
+    crossbeam::scope(|scope| {
+        let _join_handles = peers
+            .iter()
+            .map(|addr| {
+                let msg_arc_clone = Arc::clone(&msg_arc);
+                scope.spawn(move |_| {
+                    let _res = send_msg(&msg_arc_clone, &addr);
+                })
+            })
+            .collect::<Vec<ScopedJoinHandle<()>>>();
+    }).unwrap();
+}
+
 #[cfg(feature = "gui")]
 pub fn listen_for_connections(
     listen_addr: SocketAddr,
