@@ -150,7 +150,7 @@ fn handle_advertise(
     let peers = state.network.peer_addrs();
     drop(guard);
 
-    broadcast_async_blast(Request::Advertise(data), &peers);
+    broadcast_async_blast(Request::Advertise(data), &peers, Some(addr_you));
 
     if rand::random::<u8>() % 2 == 0 {
         find_new_friends(state_mut);
@@ -234,6 +234,7 @@ pub fn handle_new_txn(
     gui_channels: &GUIChannels,
     state_arc: &Arc<Mutex<State>>,
 ) -> Result<(), Box<dyn Error>> {
+    let sender_addr = socket.peer_addr().unwrap();
     drop(socket);
 
     let mut guard = state_arc.lock().unwrap();
@@ -264,7 +265,7 @@ pub fn handle_new_txn(
     let peers = state.network.peer_addrs();
     drop(guard);
 
-    broadcast_async_blast(Request::NewTxn(data.clone()), &peers);
+    broadcast_async_blast(Request::NewTxn(data.clone()), &peers, Some(sender_addr));
 
     let mut guard = state_arc.lock().unwrap();
     let state = &mut *guard;
@@ -353,6 +354,7 @@ pub fn handle_new_block(
     socket: TcpStream,
     state_mut: &Mutex<State>,
 ) -> Result<(), Box<dyn Error>> {
+    let sender = socket.peer_addr().unwrap();
     drop(socket);
 
     let mut guard = state_mut.lock().unwrap();
@@ -386,7 +388,7 @@ pub fn handle_new_block(
     let peers = state.network.peer_addrs();
     drop(guard);
 
-    broadcast_async_blast(Request::NewBlock(data), &peers);
+    broadcast_async_blast(Request::NewBlock(data), &peers, Some(sender));
 
     Ok(())
 }

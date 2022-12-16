@@ -248,7 +248,7 @@ pub fn advertise_self(state: &mut State) -> Result<(), Box<dyn Error>> {
     let req = Request::Advertise(AdvertiseReq { addr_me });
 
     let peers = state.network.peer_addrs();
-    broadcast_async_blast(req, &peers);
+    broadcast_async_blast(req, &peers, None);
 
     Ok(())
 }
@@ -258,7 +258,7 @@ pub fn advertise_self(state: &mut State) -> Result<(), Box<dyn Error>> {
 pub fn send_new_txn(txn: Transaction, state: &mut State) -> Result<(), Box<dyn Error>> {
     // TODO: Pay attention to these errors
     let peers = state.network.peer_addrs();
-    broadcast_async_blast(Request::NewTxn(txn), &peers);
+    broadcast_async_blast(Request::NewTxn(txn), &peers, None);
 
     Ok(())
 }

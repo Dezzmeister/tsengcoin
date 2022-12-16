@@ -203,19 +203,6 @@ impl Network {
         self.known_nodes.shuffle(rng);
     }
 
-    pub fn broadcast_msg(&self, msg: &Request) -> Vec<usize> {
-        self.peers
-            .iter()
-            .enumerate()
-            .filter_map(|(i, n)| {
-                match send_msg(msg, &n.addr) {
-                    Ok(_) => None,
-                    Err(_) => Some(i)
-                }
-            })
-            .collect::<Vec<usize>>()
-    }
-
     pub fn peer_addrs(&self) -> Vec<SocketAddr> {
         self.peers.iter().map(|n| n.addr).collect::<Vec<SocketAddr>>()
     }
@@ -370,12 +357,13 @@ pub fn broadcast_async_req_fn<F>(req_fn: F, peers: &[SocketAddr]) -> Vec<(Option
     }).unwrap()
 }
 
-pub fn broadcast_async_req(req: Request, peers: &[SocketAddr]) -> Vec<(Option<Response>, SocketAddr)> {
+pub fn broadcast_async_req(req: Request, peers: &[SocketAddr], except: Option<SocketAddr>) -> Vec<(Option<Response>, SocketAddr)> {
     let req_arc = Arc::new(req);
 
     crossbeam::scope(|scope| {
         let join_handles = peers
             .iter()
+            .filter(|addr| except.is_none() || *addr != &except.unwrap())
             .map(|addr| {
                 let req_arc_clone = Arc::clone(&req_arc);
                 scope.spawn(move |_| {
@@ -400,12 +388,13 @@ pub fn broadcast_async_req(req: Request, peers: &[SocketAddr]) -> Vec<(Option<Re
     }).unwrap()
 }
 
-pub fn broadcast_async(msg: Request, peers: &[SocketAddr]) -> Vec<SocketAddr> {
+pub fn broadcast_async(msg: Request, peers: &[SocketAddr], except: Option<SocketAddr>) -> Vec<SocketAddr> {
     let msg_arc = Arc::new(msg);
 
     crossbeam::scope(|scope| {
         let join_handles = peers
             .iter()
+            .filter(|addr| except.is_none() || *addr != &except.unwrap())
             .map(|addr| {
                 let msg_arc_clone = Arc::clone(&msg_arc);
                 scope.spawn(move |_| {
@@ -431,12 +420,13 @@ pub fn broadcast_async(msg: Request, peers: &[SocketAddr]) -> Vec<SocketAddr> {
     }).unwrap()
 }
 
-pub fn broadcast_async_blast(msg: Request, peers: &[SocketAddr]) {
+pub fn broadcast_async_blast(msg: Request, peers: &[SocketAddr], except: Option<SocketAddr>) {
     let msg_arc = Arc::new(msg);
 
     crossbeam::scope(|scope| {
         let _join_handles = peers
             .iter()
+            .filter(|addr| except.is_none() || *addr != &except.unwrap())
             .map(|addr| {
                 let msg_arc_clone = Arc::clone(&msg_arc);
                 scope.spawn(move |_| {

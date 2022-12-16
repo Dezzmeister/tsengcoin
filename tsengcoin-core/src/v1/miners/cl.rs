@@ -260,7 +260,7 @@ pub fn mine(state_mut: &Mutex<State>, receiver: Receiver<MinerMessage>) {
                         let peers = state.network.peer_addrs();
                         drop(guard);
 
-                        broadcast_async_blast(Request::NewBlock(new_block), &peers);
+                        broadcast_async_blast(Request::NewBlock(new_block), &peers, None);
                     }
                 }
 
