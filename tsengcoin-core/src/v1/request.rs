@@ -264,6 +264,7 @@ pub fn send_new_txn(txn: Transaction, state: &mut State) -> Result<(), Box<dyn E
 
 pub fn send_req(req: &Request, addr: &SocketAddr) -> bincode::Result<Response> {
     let socket = TcpStream::connect(addr)?;
+    socket.set_nodelay(true).unwrap();
     bincode::serialize_into(&socket, &req)?;
 
     let res: Response = bincode::deserialize_from(&socket)?;
@@ -273,6 +274,7 @@ pub fn send_req(req: &Request, addr: &SocketAddr) -> bincode::Result<Response> {
 
 pub fn send_msg(msg: &Request, addr: &SocketAddr) -> bincode::Result<()> {
     let socket = TcpStream::connect(addr)?;
+    socket.set_nodelay(true).unwrap();
     bincode::serialize_into(&socket, &msg)?;
 
     Ok(())

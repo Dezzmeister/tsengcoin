@@ -430,6 +430,8 @@ pub fn listen_for_connections(
         match stream {
             Err(err) => println!("Error receiving incoming connection: {}", err),
             Ok(conn) => {
+                conn.set_nodelay(true).unwrap();
+
                 let req: Request = match bincode::deserialize_from(&conn) {
                     Ok(data) => data,
                     Err(err) => {
