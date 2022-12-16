@@ -148,6 +148,7 @@ pub fn discover(seed_addr: SocketAddr, state: &mut State) -> Result<(), Box<dyn 
 
     let addr_me = state.remote_addr_me.unwrap();
 
+    state.network.merge(addr_me);
     state.network.clean(addr_me);
     state.network.shuffle();
     let num_peers = min(state.network.known_nodes.len(), MAX_NEIGHBORS);

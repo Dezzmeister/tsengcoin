@@ -231,7 +231,7 @@ impl Network {
         best_node
     }
 
-    fn merge(&mut self, addr_me: SocketAddr) {
+    pub fn merge(&mut self, addr_me: SocketAddr) {
         for node in &self.peers {
             self.known_nodes.push(DistantNode {
                 addr: node.addr
