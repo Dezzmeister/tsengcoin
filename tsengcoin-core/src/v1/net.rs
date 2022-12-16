@@ -136,6 +136,33 @@ impl PartialEq<&mut SocketAddr> for DistantNode {
     }
 }
 
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.addr.partial_cmp(&other.addr)
+    }
+}
+
+impl PartialOrd for DistantNode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.addr.partial_cmp(&other.addr)
+    }
+}
+
+impl Eq for Node {}
+impl Eq for DistantNode {}
+
+impl Ord for Node {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.addr.cmp(&other.addr)
+    }
+}
+
+impl Ord for DistantNode {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.addr.cmp(&other.addr)
+    }
+}
+
 #[derive(Debug)]
 pub struct Network {
     pub peers: Vec<Node>,
@@ -163,6 +190,8 @@ impl Network {
         DistantNode: PartialEq<T>,
     {
         self.remove(me);
+        self.peers.sort();
+        self.known_nodes.sort();
         self.peers.dedup();
         self.known_nodes.dedup();
     }
