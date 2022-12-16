@@ -151,7 +151,7 @@ pub fn discover(seed_addr: SocketAddr, state: &mut State) -> Result<(), Box<dyn 
     state.network.merge(addr_me);
     state.network.clean(addr_me);
     state.network.shuffle();
-    let num_peers = min(state.network.known_nodes.len(), MAX_NEIGHBORS);
+    let num_peers = min(state.network.peers.len(), MAX_NEIGHBORS);
     state.network.peers = state.network.peers[0..num_peers].to_vec();
 
     Ok(())
