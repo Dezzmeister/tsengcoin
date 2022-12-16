@@ -452,7 +452,7 @@ pub fn listen_for_connections(
                     }
                 };
 
-                if let Err(err) = handle_request(req, &conn, gui_channels, state_arc) {
+                if let Err(err) = handle_request(req, conn, gui_channels, state_arc) {
                     println!("Error handling request: {}", err);
                 }
             }
