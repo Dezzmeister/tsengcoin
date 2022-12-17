@@ -14,7 +14,10 @@ A transaction in TsengCoin is uniquely identified by its hash. The hash is compu
 
 The distinction between a confirmed and an unconfirmed transaction is that confirmed transactions exist in blocks on the blockchain and have therefore been "confirmed." The number of confirmations of a transaction/block is the depth of the transaction/block on the blockchain. Higher confirmations means that an item is unlikely to be removed from the blockchain. See [Blocks](./Blocks.md) for a more detailed explanation of the conditions that might cause blocks to be removed from the blockchain.
 
-If a confirmed transaction is any that lives in a verified and connected block, then an unconfirmed transaction is any valid transaction that does not. The pending transaction pool and orphan transaction pool both contain unconfirmed transactions, waiting for miners to group them into blocks and confirm them. The logical order of transactions must always be preserved! At no point can a confirmed transaction depend on an unconfirmed transaction. This is enforced when new blocks are validated.
+If a confirmed transaction is any that lives in a verified and connected block, then an unconfirmed transaction is any valid transaction that does not. The pending transaction pool and orphan transaction pool both contain unconfirmed transactions, waiting for miners to group them into blocks and confirm them.
+
+1. The pending pool and orphan pool must ALWAYS contain only valid transactions.
+2. The logical order of transactions must always be preserved! At no point can a confirmed transaction depend on an unconfirmed transaction. This is enforced when new blocks are validated, and this is preserved by the block's Merkle root.
 
 ## Authorization Methods
 

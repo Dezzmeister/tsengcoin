@@ -9,3 +9,4 @@ There are several optimizations that can be made to TsengCoin.
 5. Nodes should maintain a "ban score" for every node in the network. If a node sends garbage or invalid data, the recipient should increase the sender's ban score by some amount in accordance with the severity of the sending node's offense. If a node's ban score crosses a threshold, that node is banned and the banning node will not receive any communication from it, or send anything to it.
 6. TsengScript can be compiled to save space in transactions. Similarly, difficulty can be represented in the compact "difficulty bits" format as it is in Bitcoin.
 7. Forks are supported, and the current data structure allows for any number of forks off of the main chain. It does not allow for forks off of forks - these are possible albeit very rare and we may want to consider them.
+8. Use a double ratchet algorithm for chain chat. The current implementation provides no forward secrecy.

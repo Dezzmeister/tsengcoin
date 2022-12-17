@@ -10,7 +10,7 @@ A block is simply a group of transactions that has been accepted and confirmed b
 - `nonce`: A number used by miners to meet the proof of work requirement. More info in [Mining](./Mining.md)
 - `hash`: The SHA256 hash of this block. Used to identify the block in the blockchain
 
-Generally, the blockchain will be arranged in a sequential, linked-list type of way (although this is not how it's represented in code). This is not always the case though - in some rare cases, the blockchain can become forked.
+Generally, the blockchain will be arranged in a sequential, linked-list type of way (although this is not how it's represented in code). Together, the list of blocks is called a blockchain, and the blockchain implements a mostly immutable database. This is not always the case though - in some rare cases, the blockchain can become forked.
 
 ## Forks
 
