@@ -26,3 +26,19 @@ In Bitcoin, Merkle trees generally serve two purposes:
 2. If you don't have transaction data, they allow you to verify that a given transaction is in a block by means of a Merkle path proof. We don't have SPV nodes or any non-full nodes in TsengCoin, so we didn't implement this.
 
 [Chapter 7](https://www.oreilly.com/library/view/mastering-bitcoin/9781491902639/ch07.html) of the Mastering Bitcoin book by Andreas M. Antonopoulos explains Merkle trees very well. Our core client computes the Merkle root of the transactions in a block and uses this to verify that the block does indeed contain the transactions it claims to. Merkle roots also guarantee that the order of transactions in a block can't be tampered with. This is important, because an attacker might want to reorder transactions to invalidate one or more of them and therefore invalidate the whole block.
+
+## Verification Rules
+
+When a block is received from a peer, the block is validated according to the following rules:
+
+- The block cannot be more than 16kb in size
+- The block cannot have zero transactions
+- The previous block _should_ exist (if it doesn't, then the new block is an orphan - it's still accepted)
+- The current difficulty in the block header must be the actual current difficulty
+- The block hash must be less than the current difficulty target
+- The block header's hash must be correct
+- The timestamp on the block cannot be more than +/- 2 hours off from the current time
+- Every transaction in the block must be valid
+- The first transaction in the block must be the coinbase transaction
+- The amount in the coinbase transaction must be the block reward plus fees.
+- The block's Merkle root must be correct

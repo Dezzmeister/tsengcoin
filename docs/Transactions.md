@@ -105,3 +105,20 @@ Each block includes one transaction which is unlike the others. This is called t
 - It must have one input and one output
 - The input hash must be zero, and the index must be 0xFFFF_FFFF. No other transaction will ever have this many outputs, so the presence of an input pointing to output index 0xFFFF_FFFF is a clear indicator of a coinbase transaction.
 - The amount listed in the output must be the block reward plus block fees.
+
+## Verification Rules
+
+When a node receives a transaction from a peer, the transaction is verified according to the following rules:
+
+- The transaction must have at least 1 input
+- The transaction must have at least 1 output
+- The transaction cannot be bigger than the max block size (16kb)
+- The transaction cannot produce outputs totaling a sum greater than 1 billion TsengCoin
+- The transaction cannot contain empty outputs (outputs with zero TsengCoin)
+- None of the transaction's input hashes can be zero. This would indicate a coinbase transaction, which should not be relayed.
+- The transaction's hash must be valid
+- Every input must point to a valid UTXO
+- Every input must successfully unlock the corresponding output
+- The sum of transaction inputs cannot be greater than the sum of transaction outputs
+- The total transaction input amount cannot be more than 1 billion TsengCoin
+- The transaction fee cannot be zero
