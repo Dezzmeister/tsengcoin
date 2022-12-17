@@ -9,6 +9,8 @@ This project consists of several parts which each warrant their own documentatio
 - [Mining](./docs/Mining.md)
 - [TsengScript](./docs/TsengScript.md)
 - [Chain Requests](./docs/Chain-Requests.md)
+- [Optimizations](./docs/Optimizations.md)
+- [Test Node Setup](./docs/Node-Setup-Steps.md)
 
 ## Building
 

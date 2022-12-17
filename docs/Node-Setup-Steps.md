@@ -50,3 +50,7 @@ cargo build-headless-cl
 _See [config.toml](../tsengcoin-core/.cargo/config.toml) for more build options. Because our test net nodes are running in a server environment without a desktop, they are missing many of the graphical libraries needed to link the GUI application, and they can only run the core client in headless mode._
 
 The release binary will be in `tsengcoin-core/target/release`.
+
+## Alternate Option
+
+You can run [test-update.sh](../tsengcoin-core/test-update.sh) to pull the latest changes from the repo, make a headless release build, and move the binary to `tsengcoin-core`. Then you can run `./tsengcoin-core ...`
