@@ -55,8 +55,12 @@ pub struct State {
     /// Number of work groups
     pub num_work_groups: Option<usize>,
 
+    pub default_fee: u64,
+
     miner_channel: Sender<MinerMessage>,
 
+    /// Total amount of TsengCoin owned by the client's address. This needs to be computed after
+    /// constructing a State
     balance: u64,
 }
 
@@ -116,7 +120,8 @@ impl State {
                 wg_size: None,
                 num_work_groups: None,
                 miner_channel: miner_sender,
-                balance: 0
+                balance: 0,
+                default_fee: 1,
             },
             miner_receiver,
         )

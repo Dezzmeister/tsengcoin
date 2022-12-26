@@ -47,7 +47,7 @@ impl NewChatUI {
         let mut first_message_input = Input::new(20, 132, 225, 22, "First Message");
         first_message_input.set_align(Align::TopLeft);
 
-        let mut error_display = TextDisplay::default().with_pos(20, 120).with_size(225, 23);
+        let mut error_display = TextDisplay::default().with_pos(20, 170).with_size(225, 23);
         error_display.set_label_type(LabelType::None);
         error_display.set_text_size(12);
         error_display.set_color(Color::from_hex(0xE0E0E0));

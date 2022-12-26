@@ -18,16 +18,16 @@ pub struct SettingsUI {
 
 impl SettingsUI {
     pub fn new(state_arc: Arc<Mutex<State>>) -> Self {
-        let (exclusivity, chain_req_amount) = {
+        let (exclusivity, chain_req_amount, default_fee) = {
             let state_mut = &state_arc;
             let state = state_mut.lock().unwrap();
 
-            (state.friends.exclusivity, state.friends.chain_req_amount)
+            (state.friends.exclusivity, state.friends.chain_req_amount, state.default_fee)
         };
 
-        let mut win = Window::default().with_size(400, 150).with_label("Settings");
-        let mut save_btn = Button::new(325, 120, 64, 20, "Save");
-        let mut cancel_btn = Button::new(255, 120, 64, 20, "Cancel");
+        let mut win = Window::default().with_size(400, 200).with_label("Settings");
+        let mut save_btn = Button::new(325, 170, 64, 20, "Save");
+        let mut cancel_btn = Button::new(255, 170, 64, 20, "Cancel");
         let mut chain_req_input = IntInput::new(20, 32, 80, 22, "Chain Request Amount (TGC)");
         chain_req_input.set_value(&format!("{}", chain_req_amount));
         chain_req_input.set_align(Align::TopLeft);
@@ -35,6 +35,10 @@ impl SettingsUI {
         let mut exclusivity_input = IntInput::new(20, 82, 80, 22, "Exclusivity (TGC)");
         exclusivity_input.set_value(&exclusivity_to_ui(exclusivity));
         exclusivity_input.set_align(Align::TopLeft);
+
+        let mut default_fee_input = IntInput::new(20, 132, 80, 22, "Default Fee (TGC)");
+        default_fee_input.set_value(&format!("{}", default_fee));
+        default_fee_input.set_align(Align::TopLeft);
 
         let btn_state_arc = Arc::clone(&state_arc);
         let mut win_clone = win.clone();
@@ -50,9 +54,11 @@ impl SettingsUI {
 
             let new_chain_amount = chain_req_input.value().parse::<u64>().unwrap_or(1);
             let new_exclusivity = ui_to_exclusivity(&exclusivity_input.value());
+            let new_default_fee = default_fee_input.value().parse::<u64>().unwrap_or(1);
 
             state.friends.chain_req_amount = new_chain_amount;
             state.friends.exclusivity = new_exclusivity;
+            state.default_fee = new_default_fee;
 
             win_clone.hide();
         });
