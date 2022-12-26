@@ -1,5 +1,7 @@
 # TsengCoin Core
 
+![alt text](./tsengcoin-core/assets/logo.png)
+
 This project consists of several parts which each warrant their own documentation:
 
 - [Networking](./docs/Networking.md)
