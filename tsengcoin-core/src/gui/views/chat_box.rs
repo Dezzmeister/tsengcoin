@@ -14,11 +14,10 @@ use basic_visible_derive::BasicVisible;
 use fltk::{
     button::ReturnButton,
     enums::{Align, Color, LabelType},
-    group::Group,
+    group::{Group, Scroll},
     input::Input,
-    output::MultilineOutput,
-    prelude::{GroupExt, InputExt, WidgetExt},
-    window::Window,
+    prelude::{GroupExt, InputExt, WidgetExt, DisplayExt},
+    window::Window, text::{TextDisplay, TextBuffer},
 };
 
 const TRUNCATE_AFTER: usize = 10;
@@ -26,7 +25,7 @@ const TRUNCATE_AFTER: usize = 10;
 #[derive(BasicVisible, Clone)]
 pub struct ChatBoxUI {
     pub win: Window,
-    pub output: MultilineOutput,
+    pub output: TextDisplay,
     pub input: Input,
     pub send_btn: ReturnButton,
 }
@@ -39,18 +38,22 @@ impl ChatBoxUI {
         let whole_group = Group::default().with_pos(0, 0).with_size(400, 300);
 
         // TODO: Scrollbar
-        let mut scrollbar = Group::default().with_pos(0, 0).with_size(400, 260);
+        let mut scrollbar = Scroll::default().with_pos(0, 0).with_size(400, 260);
 
-        let mut output = MultilineOutput::default()
+        let mut output = TextDisplay::default()
             .with_pos(0, 0)
             .with_size(400, 260);
         output.set_label_type(LabelType::None);
         output.set_color(Color::by_index(46));
         output.set_align(Align::TopLeft);
-        output.set_wrap(true);
+
+        let buf = TextBuffer::default();
+        output.set_buffer(buf);
+
+        // output.set_wrap(true);
 
         scrollbar.add(&output);
-        scrollbar.resizable(&output);
+        // scrollbar.resizable(&output);
         scrollbar.end();
 
         let bottom_group = Group::default().with_pos(0, 270).with_size(400, 30);
@@ -110,7 +113,7 @@ impl ChatBoxUI {
         bottom_group.resizable(&input);
         bottom_group.end();
 
-        whole_group.resizable(&scrollbar);
+        whole_group.resizable(&output);
         whole_group.end();
 
         win.resizable(&whole_group);
@@ -126,7 +129,9 @@ impl ChatBoxUI {
 
     pub fn set_messages(&mut self, session: &ChatSession) {
         let txt = chat_session_to_multiline(session);
-        self.output.set_value(&txt);
+        let mut buf = TextBuffer::default();
+        buf.append(&txt);
+        self.output.set_buffer(buf);
     }
 
     pub fn add_message(&mut self, sender: &str, msg: &str) {
@@ -159,11 +164,10 @@ fn truncate_addr(addr: &str) -> String {
     out
 }
 
-fn add_message_to_history(output: &mut MultilineOutput, sender: &str, msg: &str) {
-    let mut current_history = output.value();
-    current_history.push_str(&chat_line(sender, msg));
+fn add_message_to_history(output: &mut TextDisplay, sender: &str, msg: &str) {
+    let chat_line = chat_line(sender, msg);
 
-    output.set_value(&current_history);
+    output.buffer().unwrap().append(&chat_line);
 }
 
 fn is_valid_message(msg: &str) -> bool {

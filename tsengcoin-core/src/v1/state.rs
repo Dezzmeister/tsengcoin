@@ -20,7 +20,7 @@ use super::{
     chain_request::FriendState,
     miners::{api::MinerMessage, stats::MinerStatsState},
     net::Network,
-    transaction::{Transaction, TransactionIndex, UTXOPool},
+    transaction::{Transaction, TransactionIndex, UTXOPool, p2pkh_balance, get_balance_diff},
 };
 
 /// TODO: Implement blockchain DB in filesystem or at least have a feature to enable it so we don't have to
@@ -56,6 +56,8 @@ pub struct State {
     pub num_work_groups: Option<usize>,
 
     miner_channel: Sender<MinerMessage>,
+
+    balance: u64,
 }
 
 #[cfg(feature = "gui")]
@@ -114,6 +116,7 @@ impl State {
                 wg_size: None,
                 num_work_groups: None,
                 miner_channel: miner_sender,
+                balance: 0
             },
             miner_receiver,
         )
@@ -171,6 +174,8 @@ impl State {
         {
             Ok(_) | Err(_) => (),
         };
+
+        self.compute_balance();
     }
 
     pub fn add_pending_txn(&mut self, txn: Transaction) {
@@ -179,6 +184,12 @@ impl State {
         match self.miner_channel.send(MinerMessage::NewTransactions(1)) {
             Ok(_) | Err(_) => (),
         };
+
+        let balance_diff = get_balance_diff(self, &txn);
+
+        if balance_diff != 0 {
+            self.update_balance(balance_diff);
+        }
     }
 
     pub fn add_block(&mut self, block: Block) {
@@ -187,6 +198,8 @@ impl State {
         match self.miner_channel.send(MinerMessage::NewBlock(hash, true)) {
             Ok(_) | Err(_) => (),
         };
+
+        self.compute_balance();
     }
 
     pub fn resolve_forks(&mut self) {
@@ -195,6 +208,8 @@ impl State {
             match self.miner_channel.send(MinerMessage::NewBlock(hash, true)) {
                 Ok(_) | Err(_) => (),
             };
+
+            self.compute_balance();
         }
     }
 
@@ -208,6 +223,24 @@ impl State {
     #[cfg(not(feature = "gui"))]
     pub fn has_gui(&self) -> bool {
         false
+    }
+
+    pub fn compute_balance(&mut self) {
+        self.balance = p2pkh_balance(self);
+
+        #[cfg(feature = "gui")]
+        if let Some(gui_state) = &mut self.gui {
+            gui_state.main_ui.set_balance(self.balance);
+        }
+    }
+
+    pub fn update_balance(&mut self, diff: i128) {
+        self.balance = (self.balance as i128 + diff).try_into().unwrap();
+
+        #[cfg(feature = "gui")]
+        if let Some(gui_state) = &mut self.gui {
+            gui_state.main_ui.set_balance(self.balance);
+        }
     }
 }
 

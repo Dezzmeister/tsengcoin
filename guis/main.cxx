@@ -25,6 +25,12 @@ MainUI::MainUI() {
       o->labeltype(FL_NO_LABEL);
       o->menu(menu_menu);
     } // Fl_Menu_Bar* o
+    { Fl_Output* o = new Fl_Output(0, 278, 275, 22);
+      o->labeltype(FL_NO_LABEL);
+    } // Fl_Output* o
+    { Fl_Output* o = new Fl_Output(275, 278, 125, 22);
+      o->labeltype(FL_NO_LABEL);
+    } // Fl_Output* o
     o->end();
     o->resizable(o);
   } // Fl_Double_Window* o

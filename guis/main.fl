@@ -7,8 +7,8 @@ class MainUI {open
   Function {MainUI()} {open
   } {
     Fl_Window {} {
-      label TsengCoin open selected
-      xywh {1387 243 400 300} type Double resizable visible
+      label TsengCoin open
+      xywh {528 143 400 300} type Double resizable visible
     } {
       Fl_Menu_Bar {} {
         label menu open
@@ -45,6 +45,12 @@ class MainUI {open
             xywh {0 0 30 20}
           }
         }
+      }
+      Fl_Output {} {
+        xywh {0 278 275 22} labeltype NO_LABEL
+      }
+      Fl_Output {} {selected
+        xywh {275 278 125 22} labeltype NO_LABEL
       }
     }
   }

@@ -156,6 +156,7 @@ fn blockchain_stats(
     Ok(())
 }
 
+// TODO: Use state's balance. Keeping this in here for testing because we know this works
 fn balance_p2pkh(
     _invocation: &CommandInvocation,
     state: Option<&Mutex<State>>,

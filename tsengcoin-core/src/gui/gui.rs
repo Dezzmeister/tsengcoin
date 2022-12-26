@@ -36,10 +36,10 @@ pub enum GUIResponse {
 }
 
 impl GUIState {
-    pub fn new() -> Self {
+    pub fn new(address: &str) -> Self {
         Self {
             app: App::default(),
-            main_ui: MainUI::new(),
+            main_ui: MainUI::new(address),
         }
     }
 }

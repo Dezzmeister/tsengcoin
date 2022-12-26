@@ -180,7 +180,7 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
         let with_gui = invocation.get_flag("gui");
         let gui_state = match with_gui {
             false => None,
-            true => Some(GUIState::new()),
+            true => Some(GUIState::new(&b58c_address)),
         };
 
         let (gui_req_sender, gui_req_receiver) = channel();
@@ -190,13 +190,15 @@ fn connect(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), Box
             res_channel: gui_res_receiver
         };
 
-        let (state, miner_receiver) = State::new(
+        let (mut state, miner_receiver) = State::new(
             addr_me,
             keypair,
             gui_req_sender,
             gui_state,
             miner.clone(),
         );
+
+        state.compute_balance();
 
         (state, miner_receiver, gui_channels, with_gui, gui_req_receiver, gui_res_sender)
     };
@@ -314,7 +316,7 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
         let with_gui = invocation.get_flag("gui");
         let gui_state = match with_gui {
             false => None,
-            true => Some(GUIState::new()),
+            true => Some(GUIState::new(&b58c_address)),
         };
 
         let (gui_req_sender, gui_req_receiver) = channel();
@@ -324,13 +326,15 @@ fn start_seed(invocation: &CommandInvocation, _state: Option<()>) -> Result<(), 
             res_channel: gui_res_receiver
         };
 
-        let (state, miner_receiver) = State::new(
+        let (mut state, miner_receiver) = State::new(
             addr_me,
             keypair,
             gui_req_sender,
             gui_state,
             miner.clone(),
         );
+
+        state.compute_balance();
 
         (state, miner_receiver, gui_channels,with_gui, gui_req_receiver, gui_res_sender)
     };

@@ -26,7 +26,7 @@ use super::{
     net::{DistantNode, Node, PROTOCOL_VERSION, find_new_friends, broadcast_async_blast},
     request::{AdvertiseReq, GetAddrReq, GetBlocksReq, Request},
     state::{State, GUIChannels},
-    transaction::Transaction,
+    transaction::{Transaction},
     txn_verify::verify_transaction,
 };
 

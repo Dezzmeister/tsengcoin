@@ -698,3 +698,34 @@ pub fn get_p2pkh_sender(txn: &Transaction, state: &State) -> Option<Address> {
 
     get_p2pkh_addr(code)
 }
+
+pub fn p2pkh_balance(state: &State) -> u64 {
+    let my_utxos = p2pkh_utxos_for_addr(state, state.address);
+    my_utxos.iter().fold(0, |a, e| a + e.amount)
+}
+
+pub fn get_balance_diff(state: &State, txn: &Transaction) -> i128 {
+    let mut out: i128 = 0;
+
+    for output in &txn.outputs {
+        if let Some(dest) = get_p2pkh_addr(&output.lock_script.code) {
+            if dest == state.address {
+                out += output.amount as i128;
+            }
+        }
+    }
+
+    for input in &txn.inputs {
+        if let Some(txn) = state.get_pending_or_confirmed_txn(input.txn_hash) {
+            let output = &txn.outputs[input.output_idx];
+
+            if let Some(dest) = get_p2pkh_addr(&output.lock_script.code) {
+                if dest == state.address {
+                    out -= output.amount as i128;
+                }
+            }
+        }
+    }
+
+    out
+}
