@@ -44,3 +44,6 @@ opencl3 = { version = "0.9.1", optional = true }
 cuda_builder = { version = "0.3.0", optional = true }
 nvvm = { version = "0.1.1", optional = true }
 rustc_codegen_nvvm = { version = "0.3.0", optional = true }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.12"
