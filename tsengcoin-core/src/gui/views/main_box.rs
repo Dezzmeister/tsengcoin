@@ -1,4 +1,4 @@
-use crate::gui::views::{new_chat::NewChatUI, BasicVisible, new_transaction::NewTransactionUI};
+use crate::gui::views::{new_chat::NewChatUI, BasicVisible, new_transaction::NewTransactionUI, new_unlock_script::NewUnlockScriptUI};
 use basic_visible_derive::BasicVisible;
 use std::sync::{Arc, Mutex};
 
@@ -33,6 +33,7 @@ pub enum MainUIMessage {
     NewAlias,
     NewChat,
     NewTransaction,
+    NewUnlockScript,
     About,
 }
 
@@ -100,6 +101,14 @@ impl MainUI {
             sender,
             MainUIMessage::NewChat,
         );
+        
+        menu_bar.add_emit(
+            "New/Unlock Script\t",
+            Shortcut::None,
+            MenuFlag::Normal,
+            sender,
+            MainUIMessage::NewUnlockScript
+        );
 
         menu_bar.add_emit(
             "_Help/About\t",
@@ -159,6 +168,10 @@ pub fn handle_messages(state_arc: &Arc<Mutex<State>>, main_ui: &MainUI) {
             NewTransaction => {
                 let mut new_txn = NewTransactionUI::new(Arc::clone(state_arc));
                 new_txn.show();
+            },
+            NewUnlockScript => {
+                let mut new_unlock_script = NewUnlockScriptUI::new(Arc::clone(state_arc));
+                new_unlock_script.show();
             },
             About => {
                 fltk::dialog::message_default("TsengCoin core client, written in Rust. GUI built with FLTK (Fast Light Toolkit).\nSource code at https://github.com/Dezzmeister/tsengcoin");

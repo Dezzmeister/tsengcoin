@@ -118,6 +118,17 @@ pub struct UTXOWindow {
     pub amount: u64,
 }
 
+/// Sometimes a custom unlock script may need to be provided to claim a UTXO. The unlock script
+/// usually depends on the transaction for which it is an input, so it must be provided as a raw
+/// string with variables which will be filled in when the transaction is created. Unfortunately this
+/// also means that we can't know if an unlock script can claim a UTXO until a transaction is created
+/// that tries to spend it.
+#[derive(Debug)]
+pub struct ClaimedUTXO {
+    pub window: UTXOWindow,
+    pub unlock_script: String
+}
+
 impl Transaction {
     pub fn size(&self) -> usize {
         size_of_val(&self.version)
@@ -160,10 +171,7 @@ impl Script {
 }
 
 impl UTXOPool {
-    pub fn find_txn_index<T: PartialEq>(&'_ self, txn: T) -> Option<&'_ TransactionIndex>
-    where
-        Hash256: PartialEq<T>,
-    {
+    pub fn find_txn_index(&'_ self, txn: Hash256) -> Option<&'_ TransactionIndex> {
         self.utxos.iter().find(|t| t.txn == txn)
     }
 
@@ -261,6 +269,25 @@ impl UTXOPool {
             }
 
             utxo.block = Some(block_hash);
+        }
+    }
+}
+
+impl TransactionIndex {
+    /// As long as the transaction index came from the UTXO database, this should never
+    /// return None.
+    pub fn lookup_txn(&self, state: &State) -> Option<Transaction> {
+        match self.block {
+            Some(block_hash) => {
+                let (block, _, _) = match state.blockchain.get_block(block_hash) {
+                    Some(data) => data,
+                    None => return None
+                };
+                block.get_txn(self.txn)
+            },
+            None => {
+                state.get_pending_txn(self.txn)
+            }
         }
     }
 }

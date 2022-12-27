@@ -8,7 +8,7 @@ class MainUI {open
   } {
     Fl_Window {} {
       label TsengCoin open
-      xywh {528 143 400 300} type Double resizable visible
+      xywh {826 137 400 400} type Double resizable visible
     } {
       Fl_Menu_Bar {} {
         label menu open
@@ -47,10 +47,13 @@ class MainUI {open
         }
       }
       Fl_Output {} {
-        xywh {0 278 275 22} labeltype NO_LABEL
+        xywh {0 378 275 22} labeltype NO_LABEL
       }
-      Fl_Output {} {selected
-        xywh {275 278 125 22} labeltype NO_LABEL
+      Fl_Output {} {
+        xywh {275 378 125 22} labeltype NO_LABEL
+      }
+      Fl_Box {} {selected
+        image {../tsengcoin-core/assets/logo.png} xywh {0 0 400 400} labeltype NO_LABEL align 32
       }
     }
   }

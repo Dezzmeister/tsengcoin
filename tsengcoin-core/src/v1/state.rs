@@ -20,7 +20,7 @@ use super::{
     chain_request::FriendState,
     miners::{api::MinerMessage, stats::MinerStatsState},
     net::Network,
-    transaction::{Transaction, TransactionIndex, UTXOPool, p2pkh_balance, get_balance_diff},
+    transaction::{Transaction, TransactionIndex, UTXOPool, p2pkh_balance, get_balance_diff, ClaimedUTXO},
 };
 
 /// TODO: Implement blockchain DB in filesystem or at least have a feature to enable it so we don't have to
@@ -54,8 +54,10 @@ pub struct State {
     pub wg_size: Option<usize>,
     /// Number of work groups
     pub num_work_groups: Option<usize>,
-
+    /// Default transaction fee
     pub default_fee: u64,
+    /// UTXOs with custom unlock scripts
+    claimed_utxos: Vec<ClaimedUTXO>,
 
     miner_channel: Sender<MinerMessage>,
 
@@ -122,6 +124,7 @@ impl State {
                 miner_channel: miner_sender,
                 balance: 0,
                 default_fee: 1,
+                claimed_utxos: vec![],
             },
             miner_receiver,
         )
@@ -246,6 +249,16 @@ impl State {
         if let Some(gui_state) = &mut self.gui {
             gui_state.main_ui.set_balance(self.balance);
         }
+    }
+
+    pub fn claim_utxo(&mut self, claimed_utxo: ClaimedUTXO) -> Result<(), &str> {
+        if self.claimed_utxos.iter().any(|c| c.window.txn == claimed_utxo.window.txn) {
+            return Err("Output is already claimed");
+        }
+
+        self.claimed_utxos.push(claimed_utxo);
+
+        Ok(())
     }
 }
 

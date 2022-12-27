@@ -7,8 +7,8 @@ class NewAlias {open
   Function {NewAlias()} {open
   } {
     Fl_Window {} {
-      label {New Alias} open
-      xywh {2938 465 400 150} type Double modal visible
+      label {New Alias} open selected
+      xywh {395 304 400 150} type Double modal visible
     } {
       Fl_Button {} {
         label Save
@@ -20,9 +20,9 @@ class NewAlias {open
       }
       Fl_Input {} {
         label Alias
-        xywh {20 81 225 22} align 5
+        xywh {20 82 225 22} align 5
       }
-      Fl_Text_Display {} {selected
+      Fl_Text_Display {} {
         xywh {20 120 225 20} color 39 labeltype NO_LABEL textcolor 1
       }
       Fl_Button {} {
