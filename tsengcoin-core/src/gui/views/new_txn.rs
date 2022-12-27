@@ -20,11 +20,11 @@ use crate::{
 use basic_visible_derive::BasicVisible;
 
 #[derive(BasicVisible)]
-pub struct NewTransactionUI {
+pub struct NewTxnUI {
     pub win: Window,
 }
 
-impl NewTransactionUI {
+impl NewTxnUI {
     pub fn new(state_arc: Arc<Mutex<State>>) -> Self {
         let default_fee = state_arc.lock().unwrap().default_fee;
 

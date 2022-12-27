@@ -504,6 +504,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fltk-table"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bef371756e95f36df13b16cfb20ddf2c097ef9d711b794939f508b1eceba63fd"
+dependencies = [
+ "fltk",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1305,6 +1314,7 @@ dependencies = [
  "cust",
  "fltk",
  "fltk-sys",
+ "fltk-table",
  "hex",
  "lazy_static",
  "num-bigint",

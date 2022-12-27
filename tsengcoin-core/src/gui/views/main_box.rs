@@ -1,4 +1,4 @@
-use crate::gui::views::{new_chat::NewChatUI, BasicVisible, new_transaction::NewTransactionUI, new_unlock_script::NewUnlockScriptUI};
+use crate::gui::views::{new_chat::NewChatUI, BasicVisible, new_txn::NewTxnUI, new_unlock_script::NewUnlockScriptUI, view_aliases::ViewAliasesUI};
 use basic_visible_derive::BasicVisible;
 use std::sync::{Arc, Mutex};
 
@@ -155,7 +155,8 @@ pub fn handle_messages(state_arc: &Arc<Mutex<State>>, main_ui: &MainUI) {
                 // TODO: Quitting logic
             }
             ViewAliases => {
-                println!("view aliases")
+                let mut view_aliases = ViewAliasesUI::new(Arc::clone(state_arc));
+                view_aliases.show();
             }
             NewAlias => {
                 let mut new_alias = NewAliasUI::new(Arc::clone(state_arc));
@@ -166,7 +167,7 @@ pub fn handle_messages(state_arc: &Arc<Mutex<State>>, main_ui: &MainUI) {
                 new_chat.show();
             },
             NewTransaction => {
-                let mut new_txn = NewTransactionUI::new(Arc::clone(state_arc));
+                let mut new_txn = NewTxnUI::new(Arc::clone(state_arc));
                 new_txn.show();
             },
             NewUnlockScript => {
