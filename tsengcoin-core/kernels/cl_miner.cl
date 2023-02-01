@@ -70,7 +70,7 @@ __constant uint K[64] = {
 
 #define rotr(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 
-uint uint_at(__constant const uchar * chars, const size_t idx) {
+uint uint_at(__constant const uchar * restrict chars, const size_t idx) {
     return 
         ((uint)(chars[idx]) << 24) |
         ((uint)(chars[idx + 1]) << 16) |
@@ -78,7 +78,7 @@ uint uint_at(__constant const uchar * chars, const size_t idx) {
         (uint)(chars[idx + 3]);
 }
 
-void copy_hash_out(__private uint * hash, __global uchar * hashes, size_t offset) {
+void copy_hash_out(__private uint * restrict hash, __global uchar * restrict hashes, size_t offset) {
     uint n;
     uchar u0, u1, u2, u3;
 
@@ -97,10 +97,10 @@ void copy_hash_out(__private uint * hash, __global uchar * hashes, size_t offset
 }
 
 __kernel void finish_hash(
-    __constant const uchar * nonces,
-    __constant const uint * prev,
-    __constant const uint * hash_vars,
-    __global uchar * hashes
+    __constant const uchar * restrict nonces,
+    __constant const uint * restrict prev,
+    __constant const uint * restrict hash_vars,
+    __global uchar * restrict hashes
 ) {
     const size_t idx = get_global_id(0);
     uint schedule[64] = { 0 };
